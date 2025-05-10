@@ -1,10 +1,11 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 240 50% 99%;
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -35,19 +36,12 @@
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -98,4 +92,28 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+.language-character {
+  @apply absolute text-3xl md:text-5xl opacity-70 animate-float;
+}
+
+.color-splash {
+  @apply absolute rounded-full opacity-0 animate-color-splash;
+}
+
+.record-button {
+  @apply bg-black text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-800 transition-all;
+}
+
+.primary-btn {
+  @apply bg-black text-white px-8 py-3 rounded-lg font-medium hover:bg-opacity-80 transition-all;
+}
+
+.secondary-btn {
+  @apply bg-white text-black border border-black px-8 py-3 rounded-lg font-medium hover:bg-gray-100 transition-all;
+}
+
+.info-card {
+  @apply bg-white rounded-xl p-6 shadow-lg border border-gray-100;
 }

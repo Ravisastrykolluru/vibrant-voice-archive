@@ -1,13 +1,44 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import React from "react";
+import { Link } from "react-router-dom";
+import Layout from "@/components/Layout";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
+  const { toast } = useToast();
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <Layout>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-4xl text-center space-y-10">
+          <h1 className="text-5xl md:text-7xl font-bold animate-fade-in">
+            Vibrant Voice Archive
+          </h1>
+          
+          <p className="text-xl md:text-2xl max-w-2xl mx-auto opacity-80 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+            Record and archive your voice in multiple languages with our intuitive platform.
+          </p>
+          
+          <div className="flex flex-col md:flex-row gap-6 justify-center pt-8 animate-fade-in" style={{ animationDelay: "0.4s" }}>
+            <Link to="/register" className="primary-btn">
+              New User
+            </Link>
+            
+            <Link to="/login" className="primary-btn">
+              Returning User
+            </Link>
+            
+            <Link to="/admin" className="primary-btn">
+              Admin Login
+            </Link>
+          </div>
+        </div>
+        
+        <footer className="absolute bottom-6 text-center w-full opacity-70">
+          <p>© 2025 Vibrant Voice Archive. All rights reserved.</p>
+        </footer>
       </div>
-    </div>
+    </Layout>
   );
 };
 
