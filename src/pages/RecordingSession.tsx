@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Mic, Stop, Play, Save, ArrowLeftCircle, ArrowRightCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mic, Square, Play, Save, ArrowLeftCircle, ArrowRightCircle } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -314,7 +313,7 @@ const RecordingSession: React.FC = () => {
                         className="record-button bg-red-500 text-white h-16 w-16 rounded-full"
                         onClick={handleStopRecording}
                       >
-                        <Stop size={24} />
+                        <Square size={24} />
                       </Button>
                     )}
                     
