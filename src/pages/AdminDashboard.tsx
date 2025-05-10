@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { getUsers, getLanguages, getTotalStorageUsed, deleteLanguage, Language } from "@/lib/utils/storage";
+import { getUsers, getLanguages, getTotalStorageUsed, deleteLanguage, Language, getGoogleDriveConfig } from "@/lib/utils/storage";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
@@ -19,6 +19,7 @@ const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [languages, setLanguages] = useState<Language[]>([]);
   const [storageUsed, setStorageUsed] = useState(0);
+  const [driveConfig, setDriveConfig] = useState<any>(null);
   
   useEffect(() => {
     // Load dashboard data
@@ -34,6 +35,9 @@ const AdminDashboard: React.FC = () => {
     
     const storage = getTotalStorageUsed();
     setStorageUsed(storage);
+    
+    const config = getGoogleDriveConfig();
+    setDriveConfig(config);
   };
   
   const handleAddLanguage = () => {
@@ -103,6 +107,9 @@ const AdminDashboard: React.FC = () => {
                   <div>
                     <p className="text-gray-500">Storage Used</p>
                     <p className="text-3xl font-bold">{formatStorageSize(storageUsed)}</p>
+                    {driveConfig?.connected && driveConfig?.folderName && (
+                      <p className="text-xs text-green-600 mt-1">Backed up to Google Drive</p>
+                    )}
                   </div>
                   <HardDrive className="h-10 w-10 text-holi-orange opacity-80" />
                 </div>

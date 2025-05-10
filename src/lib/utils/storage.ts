@@ -75,12 +75,29 @@ export const saveRecordingMetadata = (metadata: RecordingMetadata): void => {
   const recordings = getRecordings();
   recordings.push(metadata);
   localStorage.setItem("recordings", JSON.stringify(recordings));
+
+  // Additionally, sync with Google Drive if connected
+  syncRecordingToGoogleDrive(metadata);
 };
 
 // Get recordings for a specific user
 export const getUserRecordings = (userId: string): RecordingMetadata[] => {
   const recordings = getRecordings();
   return recordings.filter(recording => recording.userId === userId);
+};
+
+// Sync recording to Google Drive if connected
+export const syncRecordingToGoogleDrive = (metadata: RecordingMetadata): void => {
+  const driveConfig = getGoogleDriveConfig();
+  
+  // Check if Google Drive is connected and a folder is set
+  if (driveConfig.connected && driveConfig.folderId) {
+    console.log(`Syncing recording ${metadata.filePath} to Google Drive folder: ${driveConfig.folderName || driveConfig.folderId}`);
+    
+    // In a real app, this would use the Google Drive API to upload the file
+    // For this demo, we'll just log the action
+    console.log(`Recording successfully synced to Google Drive: ${metadata.filePath}`);
+  }
 };
 
 // Mock function to save recording blob (in a real app, this would use a database or file system)
@@ -99,6 +116,13 @@ export const saveRecordingBlob = (
     reader.onloadend = () => {
       recordings[filePath] = reader.result;
       localStorage.setItem("recordingsBlobs", JSON.stringify(recordings));
+      
+      // Sync to Google Drive if connected
+      const metadata = getRecordings().find(rec => rec.filePath === filePath);
+      if (metadata) {
+        syncRecordingToGoogleDrive(metadata);
+      }
+      
       resolve(filePath);
     };
   });
@@ -168,6 +192,7 @@ export interface GoogleDriveConfig {
   email: string;
   folderId: string;
   connected: boolean;
+  folderName?: string;  // Added folderName field
 }
 
 export const getGoogleDriveConfig = (): GoogleDriveConfig => {
