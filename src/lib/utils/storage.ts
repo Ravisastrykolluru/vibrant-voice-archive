@@ -156,8 +156,14 @@ export const saveRecordingMetadata = (metadata: RecordingMetadata): void => {
   
   localStorage.setItem("recordings", JSON.stringify(recordings));
 
-  // Additionally, sync with Google Drive if connected
+  // Sync with Google Drive immediately if connected
   syncRecordingToGoogleDrive(metadata);
+  
+  // Dispatch a custom event so other parts of the app can react to recording changes
+  const event = new CustomEvent("recording-updated", { 
+    detail: { userId: metadata.userId, language: metadata.language } 
+  });
+  window.dispatchEvent(event);
 };
 
 // Get recordings for a specific user
@@ -179,6 +185,14 @@ export const markForRerecording = (userId: string, language: string, sentenceInd
     
     // Sync the updated status to Google Drive
     syncRecordingToGoogleDrive(recordings[recordingIndex]);
+    
+    // Dispatch a custom event so the user gets notified immediately if they're recording
+    const event = new CustomEvent("rerecording-requested", { 
+      detail: { userId: userId, language: language, sentenceIndex: sentenceIndex } 
+    });
+    window.dispatchEvent(event);
+    
+    console.log(`Admin requested re-recording for user ${userId}, language ${language}, sentence ${sentenceIndex}`);
   }
 };
 
@@ -191,7 +205,7 @@ export const syncRecordingToGoogleDrive = (metadata: RecordingMetadata): void =>
     console.log(`Syncing recording ${metadata.filePath} to Google Drive folder: ${driveConfig.folderName || driveConfig.folderId}`);
     
     // In a real app, this would use the Google Drive API to upload the file
-    // For this demo, we'll just log the action and consider it "synced"
+    // For this demo, we'll simulate the sync and store a record of it
     
     // Store sync records
     const syncedRecordings = JSON.parse(localStorage.getItem("syncedToGoogleDrive") || "[]");
@@ -227,7 +241,7 @@ export const saveRecordingBlob = (
       recordings[filePath] = reader.result;
       localStorage.setItem("recordingsBlobs", JSON.stringify(recordings));
       
-      // Sync to Google Drive if connected
+      // Sync to Google Drive immediately
       const metadata = getRecordings().find(rec => rec.filePath === filePath);
       if (metadata) {
         syncRecordingToGoogleDrive(metadata);
@@ -262,6 +276,20 @@ export const getRecordingBlob = (filePath: string): Promise<Blob | null> => {
     const blob = new Blob([arrayBuffer], { type: mimeString });
     resolve(blob);
   });
+};
+
+// Download all recordings for a specific language as a zip file
+export const downloadAllLanguageRecordings = (language: string): Promise<Blob> => {
+  const recordings = getRecordings().filter(rec => rec.language === language);
+  // In a real app, this would create a proper ZIP file with all recordings
+  // For now, we'll create a simple JSON file with the metadata
+  const data = {
+    language,
+    recordings,
+    exportDate: new Date().toISOString()
+  };
+  
+  return Promise.resolve(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
 };
 
 // Get total storage used (in bytes)
@@ -356,4 +384,16 @@ export const saveGoogleDriveConfig = (config: GoogleDriveConfig): void => {
     
     console.log(`Synced all existing recordings to Google Drive folder: ${config.folderName || config.folderId}`);
   }
+};
+
+// Get the count of recordings needing re-recording for a user/language
+export const getRerecordingCount = (userId: string, language: string): number => {
+  const recordings = getUserLanguageRecordings(userId, language);
+  return recordings.filter(rec => rec.needsRerecording).length;
+};
+
+// Get bulk download status for Google Drive folder
+export const canBulkDownloadFromGoogleDrive = (): boolean => {
+  const config = getGoogleDriveConfig();
+  return config.connected && !!config.folderId;
 };
