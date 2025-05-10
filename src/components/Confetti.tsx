@@ -16,8 +16,8 @@ const Confetti: React.FC = () => {
   const COLORS = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#ff8800", "#8800ff"];
   
   useEffect(() => {
-    // Generate random confetti pieces
-    const newPieces = Array.from({ length: 100 }, (_, i) => ({
+    // Generate random confetti pieces - more pieces for a better celebration effect
+    const newPieces = Array.from({ length: 150 }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
       y: -10 - Math.random() * 20, // Start above the screen
@@ -29,22 +29,22 @@ const Confetti: React.FC = () => {
     
     setPieces(newPieces);
     
-    // Animate the confetti falling
+    // Animate the confetti falling with improved dynamics
     let frame = 0;
     const animateConfetti = () => {
       setPieces(prevPieces => 
         prevPieces.map(piece => ({
           ...piece,
-          y: piece.y + 1 + Math.random(), // Fall speed
-          x: piece.x + Math.sin(frame / 10 + piece.id) * 0.5, // Sway left and right
-          rotation: piece.rotation + Math.random() * 2, // Rotate
+          y: piece.y + (1.5 + Math.random()), // Increased fall speed for better effect
+          x: piece.x + Math.sin(frame / 10 + piece.id) * 0.7, // Enhanced swaying
+          rotation: piece.rotation + Math.random() * 3, // More rotation
           opacity: piece.y > 90 ? (100 - piece.y) / 10 : 1 // Fade out near bottom
         })).filter(piece => piece.y < 105 && piece.opacity > 0) // Remove pieces that are off-screen
       );
       
       frame++;
       
-      if (frame < 150) {
+      if (frame < 200) { // Longer animation duration
         requestAnimationFrame(animateConfetti);
       }
     };
@@ -68,7 +68,8 @@ const Confetti: React.FC = () => {
             backgroundColor: piece.color,
             transform: `rotate(${piece.rotation}deg)`,
             opacity: piece.opacity,
-            transition: 'opacity 0.3s'
+            transition: 'opacity 0.3s',
+            borderRadius: Math.random() > 0.5 ? '50%' : '0' // Mix of circular and square confetti
           }}
         ></div>
       ))}

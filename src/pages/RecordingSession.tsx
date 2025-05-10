@@ -209,10 +209,10 @@ const RecordingSession: React.FC = () => {
       const fileName = createRecordingFilename(user.gender, language.name, userId!, currentSentenceIndex);
       const fullPath = filePath + fileName;
       
-      // Save the recording blob
+      // Save the recording blob - this will replace any existing recording with the same path
       await saveRecordingBlob(recordingBlob, fullPath);
       
-      // Save metadata
+      // Save metadata - we'll ensure this replaces any existing metadata for this sentence
       saveRecordingMetadata({
         userId: userId!,
         language: language.name,
@@ -230,7 +230,7 @@ const RecordingSession: React.FC = () => {
       
       toast({
         title: "Recording saved",
-        description: "Successfully saved to Google Drive",
+        description: "Successfully saved to your recordings",
       });
 
       // Check if all sentences are recorded
