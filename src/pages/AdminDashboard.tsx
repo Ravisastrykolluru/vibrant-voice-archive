@@ -7,10 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { getUsers, getLanguages, getTotalStorageUsed, deleteLanguage, Language, getGoogleDriveConfig } from "@/lib/utils/storage";
+import { getUsers, getLanguages, getTotalStorageUsed, deleteLanguage, Language, getGoogleDriveConfig, getRecordings } from "@/lib/utils/storage";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
+
+// Color splash component
+const ColorSplash = () => {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-0">
+      <div className="absolute top-0 left-0 w-64 h-64 bg-red-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(-30%, -30%)' }}></div>
+      <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(30%, -30%)' }}></div>
+      <div className="absolute bottom-0 left-0 w-72 h-72 bg-green-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(-30%, 30%)' }}></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(20%, 20%)' }}></div>
+      <div className="absolute top-1/2 left-1/4 w-48 h-48 bg-yellow-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(-50%, -50%)' }}></div>
+      <div className="absolute top-1/3 right-1/4 w-56 h-56 bg-pink-500 opacity-10 rounded-full blur-3xl" style={{ transform: 'translate(50%, -50%)' }}></div>
+    </div>
+  );
+};
 
 const AdminDashboard: React.FC = () => {
   const { toast } = useToast();
@@ -20,6 +34,8 @@ const AdminDashboard: React.FC = () => {
   const [languages, setLanguages] = useState<Language[]>([]);
   const [storageUsed, setStorageUsed] = useState(0);
   const [driveConfig, setDriveConfig] = useState<any>(null);
+  const [recordingCount, setRecordingCount] = useState(0);
+  const [flaggedCount, setFlaggedCount] = useState(0);
   
   useEffect(() => {
     // Load dashboard data
@@ -38,6 +54,14 @@ const AdminDashboard: React.FC = () => {
     
     const config = getGoogleDriveConfig();
     setDriveConfig(config);
+    
+    // Count total recordings
+    const allRecordings = getRecordings();
+    setRecordingCount(allRecordings.length);
+    
+    // Count flagged recordings
+    const flagged = allRecordings.filter(rec => rec.needsRerecording).length;
+    setFlaggedCount(flagged);
   };
   
   const handleAddLanguage = () => {
@@ -68,7 +92,10 @@ const AdminDashboard: React.FC = () => {
   
   return (
     <Layout showBackground={false}>
-      <div className="min-h-screen flex flex-col">
+      {/* Colorful background effect */}
+      <ColorSplash />
+      
+      <div className="min-h-screen flex flex-col relative z-10">
         <header className="bg-black text-white shadow py-4 px-6">
           <div className="flex justify-between items-center max-w-6xl mx-auto">
             <h1 className="text-xl font-semibold">Admin Dashboard</h1>
@@ -79,16 +106,16 @@ const AdminDashboard: React.FC = () => {
           </div>
         </header>
         
-        <div className="flex-1 p-4 md:p-8 bg-gray-50">
+        <div className="flex-1 p-4 md:p-8 bg-opacity-90">
           <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
               <Card className="p-6">
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="text-gray-500">Total Users</p>
                     <p className="text-3xl font-bold">{users.length}</p>
                   </div>
-                  <Users className="h-10 w-10 text-holi-purple opacity-80" />
+                  <Users className="h-10 w-10 text-purple-500 opacity-80" />
                 </div>
               </Card>
               
@@ -98,7 +125,20 @@ const AdminDashboard: React.FC = () => {
                     <p className="text-gray-500">Languages</p>
                     <p className="text-3xl font-bold">{languages.length}</p>
                   </div>
-                  <Upload className="h-10 w-10 text-holi-blue opacity-80" />
+                  <Upload className="h-10 w-10 text-blue-500 opacity-80" />
+                </div>
+              </Card>
+              
+              <Card className="p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-gray-500">Total Recordings</p>
+                    <p className="text-3xl font-bold">{recordingCount}</p>
+                    <p className="text-xs text-red-600 mt-1">
+                      {flaggedCount > 0 && `${flaggedCount} flagged for re-recording`}
+                    </p>
+                  </div>
+                  <HardDrive className="h-10 w-10 text-green-500 opacity-80" />
                 </div>
               </Card>
               
@@ -111,7 +151,7 @@ const AdminDashboard: React.FC = () => {
                       <p className="text-xs text-green-600 mt-1">Backed up to Google Drive</p>
                     )}
                   </div>
-                  <HardDrive className="h-10 w-10 text-holi-orange opacity-80" />
+                  <HardDrive className="h-10 w-10 text-orange-500 opacity-80" />
                 </div>
               </Card>
             </div>

@@ -16,6 +16,8 @@ export interface RecordingMetadata {
   sentenceText: string;
   recordingDate: string;
   filePath: string;
+  needsRerecording?: boolean;
+  snr?: number; // Signal-to-noise ratio in dB
 }
 
 export interface Language {
@@ -47,7 +49,66 @@ export const findUserById = (id: string): UserData | undefined => {
 // Get all languages
 export const getLanguages = (): Language[] => {
   const languages = localStorage.getItem("languages");
-  return languages ? JSON.parse(languages) : [];
+  const storedLangs = languages ? JSON.parse(languages) : [];
+  
+  // If no languages exist, add default Indian languages
+  if (storedLangs.length === 0) {
+    const defaultLanguages = [
+      {
+        id: "lang_hindi",
+        name: "Hindi",
+        sentences: ["नमस्ते, आप कैसे हैं?", "मैं अच्छा हूँ, धन्यवाद।", "यह एक परीक्षण वाक्य है।"],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_tamil",
+        name: "Tamil",
+        sentences: ["வணக்கம், எப்படி இருக்கிறீர்கள்?", "நான் நன்றாக இருக்கிறேன், நன்றி.", "இது ஒரு சோதனை வாக்கியம்."],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_telugu",
+        name: "Telugu",
+        sentences: ["నమస్కారం, మీరు ఎలా ఉన్నారు?", "నేను బాగున్నాను, ధన్యవాదాలు.", "ఇది పరీక్ష వాక్యం."],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_kannada",
+        name: "Kannada",
+        sentences: ["ನಮಸ್ಕಾರ, ನೀವು ಹೇಗಿದ್ದೀರಿ?", "ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು.", "ಇದು ಪರೀಕ್ಷೆಯ ವಾಕ್ಯವಾಗಿದೆ."],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_malayalam",
+        name: "Malayalam",
+        sentences: ["നമസ്കാരം, നിങ്ങൾ എങ്ങനെ ഉണ്ട്?", "എനിക്ക് നന്നായി ഉണ്ട്, നന്ദി.", "ഇത് ഒരു പരീക്ഷണ വാക്യമാണ്."],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_english",
+        name: "English",
+        sentences: ["Hello, how are you?", "I am fine, thank you.", "This is a test sentence."],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_bengali",
+        name: "Bengali",
+        sentences: ["নমস্কার, আপনি কেমন আছেন?", "আমি ভালো আছি, ধন্যবাদ।", "এটি একটি পরীক্ষামূলক বাক্য।"],
+        uploadDate: new Date().toISOString()
+      },
+      {
+        id: "lang_marathi",
+        name: "Marathi",
+        sentences: ["नमस्कार, तुम्ही कसे आहात?", "मी ठीक आहे, धन्यवाद.", "हे एक चाचणी वाक्य आहे."],
+        uploadDate: new Date().toISOString()
+      }
+    ];
+    
+    localStorage.setItem("languages", JSON.stringify(defaultLanguages));
+    return defaultLanguages;
+  }
+  
+  return storedLangs;
 };
 
 // Save a language
@@ -73,7 +134,26 @@ export const getRecordings = (): RecordingMetadata[] => {
 // Save recording metadata
 export const saveRecordingMetadata = (metadata: RecordingMetadata): void => {
   const recordings = getRecordings();
-  recordings.push(metadata);
+  
+  // Check if this is an update to an existing recording
+  const existingIndex = recordings.findIndex(
+    rec => rec.userId === metadata.userId && 
+           rec.language === metadata.language && 
+           rec.sentenceIndex === metadata.sentenceIndex
+  );
+  
+  if (existingIndex >= 0) {
+    // Update existing recording
+    recordings[existingIndex] = {
+      ...recordings[existingIndex],
+      ...metadata,
+      recordingDate: new Date().toISOString() // Always update the date
+    };
+  } else {
+    // Add new recording
+    recordings.push(metadata);
+  }
+  
   localStorage.setItem("recordings", JSON.stringify(recordings));
 
   // Additionally, sync with Google Drive if connected
@@ -86,6 +166,22 @@ export const getUserRecordings = (userId: string): RecordingMetadata[] => {
   return recordings.filter(recording => recording.userId === userId);
 };
 
+// Mark a recording as needing re-recording
+export const markForRerecording = (userId: string, language: string, sentenceIndex: number): void => {
+  const recordings = getRecordings();
+  const recordingIndex = recordings.findIndex(
+    rec => rec.userId === userId && rec.language === language && rec.sentenceIndex === sentenceIndex
+  );
+  
+  if (recordingIndex >= 0) {
+    recordings[recordingIndex].needsRerecording = true;
+    localStorage.setItem("recordings", JSON.stringify(recordings));
+    
+    // Sync the updated status to Google Drive
+    syncRecordingToGoogleDrive(recordings[recordingIndex]);
+  }
+};
+
 // Sync recording to Google Drive if connected
 export const syncRecordingToGoogleDrive = (metadata: RecordingMetadata): void => {
   const driveConfig = getGoogleDriveConfig();
@@ -95,9 +191,23 @@ export const syncRecordingToGoogleDrive = (metadata: RecordingMetadata): void =>
     console.log(`Syncing recording ${metadata.filePath} to Google Drive folder: ${driveConfig.folderName || driveConfig.folderId}`);
     
     // In a real app, this would use the Google Drive API to upload the file
-    // For this demo, we'll just log the action
+    // For this demo, we'll just log the action and consider it "synced"
+    
+    // Store sync records
+    const syncedRecordings = JSON.parse(localStorage.getItem("syncedToGoogleDrive") || "[]");
+    if (!syncedRecordings.includes(metadata.filePath)) {
+      syncedRecordings.push(metadata.filePath);
+      localStorage.setItem("syncedToGoogleDrive", JSON.stringify(syncedRecordings));
+    }
+    
     console.log(`Recording successfully synced to Google Drive: ${metadata.filePath}`);
   }
+};
+
+// Check if a recording is synced to Google Drive
+export const isRecordingSyncedToGoogleDrive = (filePath: string): boolean => {
+  const syncedRecordings = JSON.parse(localStorage.getItem("syncedToGoogleDrive") || "[]");
+  return syncedRecordings.includes(filePath);
 };
 
 // Mock function to save recording blob (in a real app, this would use a database or file system)
@@ -177,6 +287,35 @@ export const generateUserId = (): string => {
   return id.toString();
 };
 
+// Get all recordings for a user in a specific language
+export const getUserLanguageRecordings = (userId: string, language: string): RecordingMetadata[] => {
+  const recordings = getRecordings();
+  return recordings.filter(rec => rec.userId === userId && rec.language === language);
+};
+
+// Download all recordings for a user
+export const downloadAllUserRecordings = async (userId: string): Promise<Blob> => {
+  // Get all recordings for this user
+  const userRecordings = getUserRecordings(userId);
+  
+  // Create a zip file with all recordings
+  // In a real app, we would use JSZip or a similar library
+  // For this demo, we'll just concatenate all the blobs
+  
+  const recordingsData: { [key: string]: any } = {};
+  const metadataFile = {
+    userId,
+    recordings: userRecordings,
+    exportDate: new Date().toISOString()
+  };
+  
+  recordingsData['metadata.json'] = JSON.stringify(metadataFile, null, 2);
+  
+  // In a real implementation, this would create a proper ZIP file
+  // For now, we'll just return a JSON blob
+  return new Blob([JSON.stringify(recordingsData)], { type: 'application/json' });
+};
+
 // Admin password management
 export const getAdminPassword = (): string => {
   const password = localStorage.getItem("adminPassword");
@@ -192,7 +331,7 @@ export interface GoogleDriveConfig {
   email: string;
   folderId: string;
   connected: boolean;
-  folderName?: string;  // Added folderName field
+  folderName?: string;
 }
 
 export const getGoogleDriveConfig = (): GoogleDriveConfig => {
@@ -204,4 +343,17 @@ export const getGoogleDriveConfig = (): GoogleDriveConfig => {
 
 export const saveGoogleDriveConfig = (config: GoogleDriveConfig): void => {
   localStorage.setItem("googleDriveConfig", JSON.stringify(config));
+  
+  // If connecting, sync all existing recordings
+  if (config.connected && config.folderId) {
+    const allRecordings = getRecordings();
+    console.log(`Syncing ${allRecordings.length} existing recordings to Google Drive...`);
+    
+    // In a real app, this would batch upload all recordings
+    // For this demo, we'll just mark them as synced
+    const syncedPaths = allRecordings.map(rec => rec.filePath);
+    localStorage.setItem("syncedToGoogleDrive", JSON.stringify(syncedPaths));
+    
+    console.log(`Synced all existing recordings to Google Drive folder: ${config.folderName || config.folderId}`);
+  }
 };

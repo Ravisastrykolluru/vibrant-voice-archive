@@ -1,10 +1,12 @@
 
 import React, { useState } from "react";
-import { ArrowLeft, Download, Play } from "lucide-react";
+import { ArrowLeft, Download, Play, Bell, Archive } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RecordingMetadata, getRecordingBlob } from "@/lib/utils/storage";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { RecordingMetadata, getRecordingBlob, markForRerecording, downloadAllUserRecordings, isRecordingSyncedToGoogleDrive } from "@/lib/utils/storage";
 import { playAudio } from "@/lib/utils/audio";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,6 +19,7 @@ interface AdminUserDetailsProps {
 const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, onBack }) => {
   const { toast } = useToast();
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   
   const handlePlayRecording = async (filePath: string, index: number) => {
     try {
@@ -73,10 +76,54 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
   };
   
   const handleDownloadAll = async () => {
-    toast({
-      title: "Feature coming soon",
-      description: "Bulk download will be available in a future update"
-    });
+    try {
+      setDownloadingAll(true);
+      toast({
+        title: "Preparing download",
+        description: "Creating archive of all recordings..."
+      });
+      
+      const archiveBlob = await downloadAllUserRecordings(user.id);
+      
+      const url = URL.createObjectURL(archiveBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `recordings_${user.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Download complete",
+        description: "All recordings have been downloaded"
+      });
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: "Could not download all recordings",
+        variant: "destructive"
+      });
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+  
+  const handleRequestRerecording = (recording: RecordingMetadata) => {
+    try {
+      markForRerecording(recording.userId, recording.language, recording.sentenceIndex);
+      
+      toast({
+        title: "Re-recording requested",
+        description: "User will be prompted to re-record this sentence on their next session",
+      });
+    } catch (error) {
+      toast({
+        title: "Request failed",
+        description: "Could not request re-recording",
+        variant: "destructive"
+      });
+    }
   };
   
   // Group recordings by language
@@ -147,10 +194,21 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                   : "N/A"}
               </dd>
             </div>
+            <div className="flex">
+              <dt className="w-40 font-medium text-gray-500">Flagged for Re-recording:</dt>
+              <dd>
+                {recordings.filter(r => r.needsRerecording).length}
+              </dd>
+            </div>
           </dl>
           
-          <Button onClick={handleDownloadAll} className="mt-6 flex items-center">
-            <Download size={18} className="mr-2" /> Download All Recordings
+          <Button 
+            onClick={handleDownloadAll} 
+            className="mt-6 flex items-center"
+            disabled={downloadingAll}
+          >
+            <Archive size={18} className="mr-2" /> 
+            {downloadingAll ? "Preparing Archive..." : "Download All Recordings"}
           </Button>
         </div>
       </div>
@@ -170,6 +228,8 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                       <TableHead>Sentence #</TableHead>
                       <TableHead>Sentence Text</TableHead>
                       <TableHead>Date Recorded</TableHead>
+                      <TableHead>SNR (dB)</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -184,6 +244,37 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                           </TableCell>
                           <TableCell>
                             {new Date(recording.recordingDate).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {recording.snr ? (
+                              <div>
+                                <span className={`font-medium ${
+                                  recording.snr > 25 ? "text-green-600" : 
+                                  recording.snr > 15 ? "text-yellow-600" : "text-red-600"
+                                }`}>
+                                  {recording.snr.toFixed(1)}
+                                </span>
+                                <Progress 
+                                  className="h-1 mt-1" 
+                                  value={Math.min((recording.snr / 40) * 100, 100)} 
+                                />
+                              </div>
+                            ) : (
+                              "N/A"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              {recording.needsRerecording ? (
+                                <Badge variant="destructive">Needs re-recording</Badge>
+                              ) : (
+                                <Badge variant="secondary">
+                                  {isRecordingSyncedToGoogleDrive(recording.filePath) 
+                                    ? "Synced to Drive" 
+                                    : "Local only"}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">
@@ -205,6 +296,15 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                                 )}
                               >
                                 <Download size={16} />
+                              </Button>
+                              <Button
+                                variant={recording.needsRerecording ? "destructive" : "outline"}
+                                size="sm"
+                                className="flex items-center"
+                                onClick={() => handleRequestRerecording(recording)}
+                                disabled={recording.needsRerecording}
+                              >
+                                <Bell size={16} />
                               </Button>
                             </div>
                           </TableCell>

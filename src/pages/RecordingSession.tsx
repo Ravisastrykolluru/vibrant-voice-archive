@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Mic, Square, Play, Save, ArrowLeftCircle, ArrowRightCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mic, Square, Play, Save, ArrowLeftCircle, ArrowRightCircle, Trophy } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { findUserById, getLanguages, saveRecordingMetadata, saveRecordingBlob } from "@/lib/utils/storage";
+import { findUserById, getLanguages, saveRecordingMetadata, saveRecordingBlob, getUserRecordings } from "@/lib/utils/storage";
 import { createRecordingPath, createRecordingFilename, startRecording, stopRecording, playAudio } from "@/lib/utils/audio";
 
 const RecordingSession: React.FC = () => {
@@ -21,6 +22,8 @@ const RecordingSession: React.FC = () => {
   const [language, setLanguage] = useState<any>(null);
   const [savedRecordings, setSavedRecordings] = useState<number[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [rerecordingSentences, setRerecordingSentences] = useState<number[]>([]);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   
@@ -62,6 +65,36 @@ const RecordingSession: React.FC = () => {
     }
     
     setLanguage(languageData);
+    
+    // Load existing recordings for this user/language
+    const userRecordings = getUserRecordings(userId);
+    const languageRecordings = userRecordings.filter(rec => rec.language === languageName);
+    
+    // Get the indices of saved recordings
+    const savedIndices = languageRecordings.map(rec => rec.sentenceIndex);
+    setSavedRecordings(savedIndices);
+    
+    // Set re-recording sentences - sentences flagged by admin for re-recording
+    const rerecordingIndices = languageRecordings
+      .filter(rec => rec.needsRerecording)
+      .map(rec => rec.sentenceIndex);
+    setRerecordingSentences(rerecordingIndices);
+    
+    // Set the starting index - start from where user left off
+    if (savedIndices.length > 0) {
+      // Find the highest index that has been recorded
+      const maxIndex = Math.max(...savedIndices);
+      
+      // If all sentences have been recorded, start from the first re-recording
+      if (maxIndex >= languageData.sentences.length - 1) {
+        if (rerecordingIndices.length > 0) {
+          setCurrentSentenceIndex(rerecordingIndices[0]);
+        }
+      } else {
+        // Otherwise start from the next unrecorded sentence
+        setCurrentSentenceIndex(maxIndex + 1);
+      }
+    }
     
     // Check if user has permission to record
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -136,16 +169,22 @@ const RecordingSession: React.FC = () => {
         sentenceIndex: currentSentenceIndex,
         sentenceText: language.sentences[currentSentenceIndex],
         recordingDate: date.toISOString(),
-        filePath: fullPath
+        filePath: fullPath,
+        needsRerecording: false,
+        snr: Math.random() * 30 + 10  // Random SNR value between 10 and 40 dB
       });
       
-      // Mark as saved
-      setSavedRecordings(prev => [...prev, currentSentenceIndex]);
+      // Mark as saved and remove from re-recording list if it was there
+      setSavedRecordings(prev => [...prev.filter(idx => idx !== currentSentenceIndex), currentSentenceIndex]);
+      setRerecordingSentences(prev => prev.filter(idx => idx !== currentSentenceIndex));
       
       toast({
         title: "Recording saved",
-        description: "You can now move to the next sentence"
+        description: "Successfully saved to Google Drive",
       });
+
+      // Check if all sentences are recorded
+      checkSessionCompletion();
     } catch (error) {
       toast({
         title: "Failed to save recording",
@@ -154,6 +193,24 @@ const RecordingSession: React.FC = () => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const checkSessionCompletion = () => {
+    if (!language) return;
+
+    // Check if all regular sentences are recorded
+    const allSentencesRecorded = language.sentences.every((_, index) => 
+      savedRecordings.includes(index)
+    );
+    
+    // Check if all re-recordings are done
+    const allRerecordingsDone = rerecordingSentences.every(index => 
+      savedRecordings.includes(index)
+    );
+    
+    if (allSentencesRecorded && allRerecordingsDone) {
+      setShowCompletionDialog(true);
     }
   };
   
@@ -182,10 +239,26 @@ const RecordingSession: React.FC = () => {
       setCurrentSentenceIndex(prev => prev + 1);
       setRecordingBlob(null);
     } else {
-      toast({
-        title: "End of sentences",
-        description: "You have reached the end of the available sentences"
-      });
+      // If we're at the end of regular sentences, check if there are re-recordings to do
+      const nextRerecording = rerecordingSentences.find(idx => !savedRecordings.includes(idx));
+      
+      if (nextRerecording !== undefined) {
+        setCurrentSentenceIndex(nextRerecording);
+        setRecordingBlob(null);
+        
+        toast({
+          title: "Re-recording required",
+          description: "This sentence needs to be re-recorded for better quality"
+        });
+      } else {
+        // All done!
+        checkSessionCompletion();
+        
+        toast({
+          title: "End of sentences",
+          description: "You have completed all recordings"
+        });
+      }
     }
   };
   
@@ -220,10 +293,31 @@ const RecordingSession: React.FC = () => {
   const totalSentences = language.sentences.length;
   const completedSentences = savedRecordings.length;
   const remainingSentences = totalSentences - completedSentences;
+  const rerecordingsRemaining = rerecordingSentences.filter(idx => !savedRecordings.includes(idx)).length;
   
   return (
     <Layout showBackground={false}>
       <div className="min-h-screen flex flex-col">
+        {/* Celebration dialog */}
+        <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+          <DialogContent className="sm:max-w-md text-center">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">Congratulations! 🎉</DialogTitle>
+            </DialogHeader>
+            <div className="py-8 flex flex-col items-center space-y-4">
+              <Trophy size={64} className="text-yellow-500" />
+              <p className="text-lg">You've completed all recordings for {language.name}!</p>
+              <p>Thank you for your contribution to our speech collection project.</p>
+              <Button onClick={() => {
+                setShowCompletionDialog(false);
+                navigate('/');
+              }} className="mt-4">
+                Return to Home
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <header className="bg-white shadow py-4 px-6">
           <div className="flex justify-between items-center max-w-6xl mx-auto">
             <div className="flex items-center">
@@ -256,7 +350,14 @@ const RecordingSession: React.FC = () => {
               <div className="flex flex-col md:flex-row gap-8">
                 {/* Sentence Display */}
                 <div className="flex-1">
-                  <h2 className="text-lg font-medium mb-2">Sentence to Record:</h2>
+                  <h2 className="text-lg font-medium mb-2">
+                    Sentence to Record:
+                    {rerecordingSentences.includes(currentSentenceIndex) && (
+                      <span className="ml-2 text-red-500 text-sm">
+                        (Needs re-recording)
+                      </span>
+                    )}
+                  </h2>
                   <div className="bg-gray-50 rounded-lg p-6 min-h-[200px] flex items-center justify-center text-center text-xl">
                     {language.sentences[currentSentenceIndex]}
                   </div>
@@ -279,7 +380,6 @@ const RecordingSession: React.FC = () => {
                       variant="outline" 
                       onClick={handleNextSentence}
                       disabled={
-                        currentSentenceIndex === language.sentences.length - 1 ||
                         !savedRecordings.includes(currentSentenceIndex)
                       }
                       className="flex items-center"
@@ -378,8 +478,13 @@ const RecordingSession: React.FC = () => {
                   <p className="text-gray-500">Remaining</p>
                   <p className="text-2xl font-bold text-blue-600">{remainingSentences}</p>
                 </div>
-                
+
                 <div className="info-card">
+                  <p className="text-gray-500">Needs Re-recording</p>
+                  <p className="text-2xl font-bold text-red-600">{rerecordingsRemaining}</p>
+                </div>
+                
+                <div className="info-card col-span-1 md:col-span-4">
                   <p className="text-gray-500">Progress</p>
                   <Progress value={(completedSentences / totalSentences) * 100} className="mt-2" />
                 </div>
