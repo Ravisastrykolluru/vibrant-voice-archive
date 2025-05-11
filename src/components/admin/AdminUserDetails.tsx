@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { ArrowLeft, Download, Play, Bell, Archive, RefreshCw, Folder, Cloud } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { RecordingMetadata, getRecordingBlob, markForRerecording, downloadAllUserRecordings, isRecordingSyncedToGoogleDrive, getStoragePreference } from "@/lib/utils/storage";
+import { RecordingMetadata, getRecordingBlob, markForRerecording, downloadAllUserRecordings, isRecordingSyncedToGoogleDrive, getStoragePreference, getUserRecordings } from "@/lib/utils/storage";
 import { playAudio } from "@/lib/utils/audio";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,10 +16,21 @@ interface AdminUserDetailsProps {
   onBack: () => void;
 }
 
-const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, onBack }) => {
+const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack }) => {
   const { toast } = useToast();
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [recordings, setRecordings] = useState<RecordingMetadata[]>([]);
+  
+  // Load recordings when component mounts or when they change
+  useEffect(() => {
+    loadRecordings();
+  }, [user.id]);
+  
+  const loadRecordings = () => {
+    const userRecordings = getUserRecordings(user.id);
+    setRecordings(userRecordings);
+  };
   
   const handlePlayRecording = async (filePath: string, index: number) => {
     try {
@@ -116,6 +128,15 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
         title: "Re-recording requested",
         description: "User will be prompted to re-record this sentence on their next session",
       });
+      
+      // Refresh the recordings to show the updated state
+      loadRecordings();
+      
+      // Dispatch the recording-updated event to update other components
+      const event = new CustomEvent("recording-updated", { 
+        detail: { userId: recording.userId, language: recording.language } 
+      });
+      window.dispatchEvent(event);
     } catch (error) {
       toast({
         title: "Request failed",

@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,21 @@ interface AdminUserListProps {
 const AdminUserList: React.FC<AdminUserListProps> = ({ users }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Listen for recording-updated events
+  useEffect(() => {
+    const handleRecordingUpdate = () => {
+      // Force a refresh of the component
+      setRefreshTrigger(prev => prev + 1);
+    };
+    
+    window.addEventListener("recording-updated", handleRecordingUpdate);
+    
+    return () => {
+      window.removeEventListener("recording-updated", handleRecordingUpdate);
+    };
+  }, []);
   
   // Filter users based on search term
   const filteredUsers = users.filter(user => 
@@ -30,11 +45,10 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users }) => {
   };
   
   if (selectedUser) {
-    const userRecordings = getUserRecordings(selectedUser.id);
     return (
       <AdminUserDetails 
         user={selectedUser} 
-        recordings={userRecordings} 
+        recordings={[]} // This prop is no longer used as AdminUserDetails fetches its own data
         onBack={handleBackToList} 
       />
     );
