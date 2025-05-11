@@ -1,13 +1,24 @@
 
 import React, { useState, useEffect } from "react";
-import { LogIn, FolderPlus } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
+import { Cloud, Folder, Archive } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getAdminPassword, setAdminPassword, getGoogleDriveConfig, saveGoogleDriveConfig, GoogleDriveConfig } from "@/lib/utils/storage";
+import { 
+  setAdminPassword, 
+  getAdminPassword, 
+  getGoogleDriveConfig, 
+  saveGoogleDriveConfig, 
+  GoogleDriveConfig,
+  getStoragePreference,
+  setStoragePreference,
+  StoragePreference
+} from "@/lib/utils/storage";
 
 interface AdminSettingsProps {
   onSettingsUpdated: () => void;
@@ -15,66 +26,60 @@ interface AdminSettingsProps {
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({ onSettingsUpdated }) => {
   const { toast } = useToast();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [googleEmail, setGoogleEmail] = useState("");
+  const [folderName, setFolderName] = useState("Speech_Recordings");
   const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig | null>(null);
-  const [showFolderDialog, setShowFolderDialog] = useState(false);
-  const [folderName, setFolderName] = useState("HoliBoli_Recordings");
+  const [isLoading, setIsLoading] = useState(false);
+  const [storageType, setStorageType] = useState<"local" | "google-drive">("local");
+  const [autoSync, setAutoSync] = useState(false);
   
   useEffect(() => {
-    // Load existing Google Drive settings
+    // Load storage preference
+    const prefs = getStoragePreference();
+    setStorageType(prefs.type);
+    setAutoSync(prefs.autoSync);
+    
+    // Load Google Drive config
     const config = getGoogleDriveConfig();
     setDriveConfig(config);
     if (config.email) {
       setGoogleEmail(config.email);
     }
+    if (config.folderName) {
+      setFolderName(config.folderName);
+    }
   }, []);
   
   const handleChangePassword = () => {
-    const adminPassword = getAdminPassword();
-    
-    if (currentPassword !== adminPassword) {
-      toast({
-        title: "Incorrect password",
-        description: "The current password you entered is incorrect",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    if (newPassword !== confirmPassword) {
+    if (password !== confirmPassword) {
       toast({
         title: "Passwords don't match",
-        description: "The new password and confirmation don't match",
+        description: "Please make sure both passwords are identical",
         variant: "destructive"
       });
       return;
     }
     
-    if (newPassword.length < 4) {
+    if (password.length < 4) {
       toast({
         title: "Password too short",
-        description: "The new password must be at least 4 characters long",
+        description: "Password should be at least 4 characters long",
         variant: "destructive"
       });
       return;
     }
     
-    // Update the password
-    setAdminPassword(newPassword);
+    setAdminPassword(password);
     
     toast({
-      title: "Password changed",
-      description: "Your admin password has been updated successfully"
+      title: "Password updated",
+      description: "The administrator password has been changed"
     });
     
-    // Reset form
-    setCurrentPassword("");
-    setNewPassword("");
+    setPassword("");
     setConfirmPassword("");
-    onSettingsUpdated();
   };
   
   const handleConnectGoogleDrive = () => {
@@ -87,38 +92,6 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onSettingsUpdated }) => {
       return;
     }
     
-    // Simulated OAuth2 flow (in a real app, this would redirect to Google)
-    toast({
-      title: "Google Drive Connection",
-      description: "Simulating OAuth2 connection..."
-    });
-    
-    // Simulate a successful connection after a delay
-    setTimeout(() => {
-      // Create initial configuration without folder
-      const config: GoogleDriveConfig = {
-        email: googleEmail,
-        folderId: "",
-        connected: true
-      };
-      
-      // Save the configuration
-      saveGoogleDriveConfig(config);
-      setDriveConfig(config);
-      
-      toast({
-        title: "Connection successful",
-        description: "Connected to Google Drive with " + googleEmail
-      });
-      
-      // Show folder creation dialog
-      setShowFolderDialog(true);
-      
-      onSettingsUpdated();
-    }, 2000);
-  };
-  
-  const handleCreateFolder = () => {
     if (!folderName.trim()) {
       toast({
         title: "Folder name required",
@@ -128,15 +101,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onSettingsUpdated }) => {
       return;
     }
     
-    // Simulate creating a folder in Google Drive
+    // Show connecting status
     toast({
-      title: "Creating folder",
-      description: "Setting up your recordings folder in Google Drive..."
+      title: "Google Drive Connection",
+      description: "Connecting to Google Drive..."
     });
     
-    // Simulate successful folder creation after a delay
+    // Simulate Google OAuth login with a delay
+    setIsLoading(true);
     setTimeout(() => {
-      // Update configuration with new folder ID
+      // Update configuration with new folder ID and connection status
       const updatedConfig: GoogleDriveConfig = {
         email: googleEmail,
         folderId: "folder_" + Date.now(), // In a real app, this would be the actual folder ID
@@ -148,190 +122,241 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onSettingsUpdated }) => {
       saveGoogleDriveConfig(updatedConfig);
       setDriveConfig(updatedConfig);
       
-      // Close the dialog
-      setShowFolderDialog(false);
+      setIsLoading(false);
       
       toast({
-        title: "Folder created",
-        description: `"${folderName}" folder has been created in your Google Drive`
+        title: "Connection successful",
+        description: `Connected to Google Drive with ${googleEmail} and created folder "${folderName}"`
       });
       
+      // Notify parent component of settings update
       onSettingsUpdated();
-    }, 1500);
+    }, 2000);
   };
   
   const handleDisconnectGoogleDrive = () => {
-    if (window.confirm("Are you sure you want to disconnect from Google Drive? All automatic backups will stop.")) {
-      // Reset the configuration
-      const config: GoogleDriveConfig = {
-        email: "",
-        folderId: "",
-        connected: false
-      };
-      
-      saveGoogleDriveConfig(config);
-      setDriveConfig(config);
-      setGoogleEmail("");
-      
-      toast({
-        title: "Disconnected",
-        description: "Google Drive connection has been removed"
-      });
-      
-      onSettingsUpdated();
+    const updatedConfig: GoogleDriveConfig = {
+      email: "",
+      folderId: "",
+      connected: false,
+      folderName: ""
+    };
+    
+    saveGoogleDriveConfig(updatedConfig);
+    setDriveConfig(updatedConfig);
+    
+    // If we're using Google Drive storage, switch back to local
+    if (storageType === "google-drive") {
+      setStorageType("local");
+      setStoragePreference({ type: "local", autoSync: false });
     }
+    
+    toast({
+      title: "Disconnected",
+      description: "You have disconnected from Google Drive"
+    });
+    
+    // Notify parent component of settings update
+    onSettingsUpdated();
+  };
+  
+  const handleStoragePreferenceChange = () => {
+    // If switching to Google Drive but it's not connected
+    if (storageType === "google-drive" && (!driveConfig || !driveConfig.connected)) {
+      toast({
+        title: "Google Drive not connected",
+        description: "Please connect to Google Drive first",
+        variant: "destructive"
+      });
+      setStorageType("local");
+      return;
+    }
+    
+    // Save storage preferences
+    setStoragePreference({
+      type: storageType,
+      autoSync: autoSync
+    });
+    
+    toast({
+      title: "Storage settings updated",
+      description: `Using ${storageType === "local" ? "local storage" : "Google Drive"} for recordings`
+    });
+    
+    // Notify parent component of settings update
+    onSettingsUpdated();
   };
   
   return (
-    <div className="space-y-8">
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Change Admin Password</h3>
-        
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
-            <Input 
-              id="currentPassword" 
-              type="password"
-              value={currentPassword} 
-              onChange={(e) => setCurrentPassword(e.target.value)} 
-              placeholder="Enter current password" 
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
-            <Input 
-              id="newPassword" 
-              type="password"
-              value={newPassword} 
-              onChange={(e) => setNewPassword(e.target.value)} 
-              placeholder="Enter new password" 
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm New Password</Label>
-            <Input 
-              id="confirmPassword" 
-              type="password"
-              value={confirmPassword} 
-              onChange={(e) => setConfirmPassword(e.target.value)} 
-              placeholder="Confirm new password" 
-            />
-          </div>
-          
-          <Button onClick={handleChangePassword} className="mt-2">
-            Change Password
-          </Button>
-        </div>
-      </Card>
+    <Tabs defaultValue="security" className="w-full">
+      <TabsList className="grid w-full grid-cols-3">
+        <TabsTrigger value="security">Security</TabsTrigger>
+        <TabsTrigger value="storage">Storage</TabsTrigger>
+        <TabsTrigger value="backup">Backup & Sync</TabsTrigger>
+      </TabsList>
       
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Google Drive Integration</h3>
-        
-        {driveConfig?.connected ? (
-          <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <p className="text-green-800 flex items-center">
-                <LogIn className="mr-2" size={18} /> 
-                Connected to Google Drive as <span className="font-semibold ml-1">{driveConfig.email}</span>
-              </p>
-              {driveConfig.folderName ? (
-                <div className="mt-2">
-                  <p className="text-sm text-green-700 flex items-center">
-                    <FolderPlus size={16} className="mr-2" />
-                    Recordings are being synced to folder: <span className="font-semibold ml-1">{driveConfig.folderName}</span>
-                  </p>
-                  <p className="text-xs text-green-600 mt-1">
-                    All new recordings will automatically be saved to this Google Drive folder
-                  </p>
-                </div>
-              ) : (
-                <div className="mt-2">
-                  <p className="text-sm text-yellow-600">
-                    No folder selected. Please create a folder for recordings.
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-2" 
-                    onClick={() => setShowFolderDialog(true)}
-                  >
-                    <FolderPlus size={16} className="mr-2" />
-                    Create Folder
-                  </Button>
-                </div>
-              )}
-            </div>
-            
-            <Button 
-              variant="destructive" 
-              onClick={handleDisconnectGoogleDrive}
-            >
-              Disconnect Google Drive
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-gray-500 mb-4">
-              Connect your Google Drive to automatically back up all recordings.
-            </p>
-            
+      <TabsContent value="security" className="space-y-4 mt-4">
+        <Card className="p-6">
+          <h3 className="text-lg font-medium mb-4">Change Admin Password</h3>
+          <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="googleEmail">Google Email</Label>
+              <Label htmlFor="new-password">New Password</Label>
               <Input 
-                id="googleEmail" 
-                type="email"
-                value={googleEmail} 
-                onChange={(e) => setGoogleEmail(e.target.value)} 
-                placeholder="your.email@gmail.com" 
+                id="new-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter new password"
               />
             </div>
             
-            <Button onClick={handleConnectGoogleDrive} className="mt-2">
-              Connect Google Drive
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* Folder Creation Dialog */}
-      <Dialog open={showFolderDialog} onOpenChange={setShowFolderDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Google Drive Folder</DialogTitle>
-            <DialogDescription>
-              Create a folder in your Google Drive where all recordings will be automatically saved.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="folderName">Folder Name</Label>
-              <Input
-                id="folderName"
-                value={folderName}
-                onChange={(e) => setFolderName(e.target.value)}
-                placeholder="HoliBoli_Recordings"
+              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <Input 
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                This folder will be created in your Google Drive and all recordings will be saved here
-              </p>
             </div>
+            
+            <Button onClick={handleChangePassword}>Update Password</Button>
           </div>
           
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFolderDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateFolder}>
-              Create Folder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          <p className="text-sm text-gray-500 mt-4">
+            Default password is "admin"
+          </p>
+        </Card>
+      </TabsContent>
+      
+      <TabsContent value="storage" className="space-y-4 mt-4">
+        <Card className="p-6">
+          <h3 className="text-lg font-medium mb-4">Storage Preferences</h3>
+          
+          <div className="space-y-6">
+            <RadioGroup 
+              value={storageType} 
+              onValueChange={(value: "local" | "google-drive") => setStorageType(value)}
+              className="space-y-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="local" id="local-storage" />
+                <Label htmlFor="local-storage" className="flex items-center cursor-pointer">
+                  <Folder className="h-5 w-5 mr-2 text-blue-500" />
+                  <div>
+                    <div className="font-medium">Local Storage</div>
+                    <div className="text-sm text-gray-500">Store recordings in browser's local storage</div>
+                  </div>
+                </Label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem 
+                  value="google-drive" 
+                  id="google-drive-storage" 
+                  disabled={!driveConfig?.connected}
+                />
+                <Label htmlFor="google-drive-storage" className={`flex items-center ${!driveConfig?.connected ? 'opacity-50' : 'cursor-pointer'}`}>
+                  <Cloud className="h-5 w-5 mr-2 text-green-500" />
+                  <div>
+                    <div className="font-medium">Google Drive</div>
+                    <div className="text-sm text-gray-500">
+                      {driveConfig?.connected 
+                        ? `Connected as ${driveConfig.email}`
+                        : "Not connected yet"}
+                    </div>
+                  </div>
+                </Label>
+              </div>
+            </RadioGroup>
+            
+            {storageType === "google-drive" && driveConfig?.connected && (
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="auto-sync"
+                  checked={autoSync}
+                  onCheckedChange={setAutoSync}
+                />
+                <Label htmlFor="auto-sync">Auto-sync existing recordings</Label>
+              </div>
+            )}
+            
+            <Button onClick={handleStoragePreferenceChange}>Save Storage Settings</Button>
+          </div>
+        </Card>
+      </TabsContent>
+      
+      <TabsContent value="backup" className="space-y-4 mt-4">
+        <Card className="p-6">
+          <h3 className="text-lg font-medium mb-4">Google Drive Integration</h3>
+          
+          {!driveConfig?.connected ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="google-email">Google Email</Label>
+                <Input 
+                  id="google-email"
+                  type="email"
+                  value={googleEmail}
+                  onChange={(e) => setGoogleEmail(e.target.value)}
+                  placeholder="your.email@gmail.com"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="folder-name">Drive Folder Name</Label>
+                <Input 
+                  id="folder-name"
+                  value={folderName}
+                  onChange={(e) => setFolderName(e.target.value)}
+                  placeholder="Speech_Recordings"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This folder will be created in your Google Drive to store all recordings
+                </p>
+              </div>
+              
+              <Button 
+                onClick={handleConnectGoogleDrive} 
+                disabled={isLoading}
+                className="flex items-center gap-2"
+              >
+                <Cloud size={16} />
+                {isLoading ? "Connecting..." : "Connect to Google Drive"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                <div className="flex items-center">
+                  <Cloud className="h-5 w-5 text-green-600 mr-2" />
+                  <div className="flex-1">
+                    <p className="text-green-800 font-medium">Connected to Google Drive</p>
+                    <p className="text-green-700 text-sm">{driveConfig.email}</p>
+                    <p className="text-green-700 text-sm">Folder: {driveConfig.folderName}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-between">
+                <Button 
+                  variant="outline" 
+                  onClick={handleDisconnectGoogleDrive}
+                >
+                  Disconnect
+                </Button>
+                
+                <Button className="flex items-center gap-2">
+                  <Archive size={16} />
+                  Backup All Recordings
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </TabsContent>
+    </Tabs>
   );
 };
 

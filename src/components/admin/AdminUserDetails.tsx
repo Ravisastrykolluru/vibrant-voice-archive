@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { RecordingMetadata, getRecordingBlob, markForRerecording, downloadAllUserRecordings, isRecordingSyncedToGoogleDrive } from "@/lib/utils/storage";
+import { RecordingMetadata, getRecordingBlob, markForRerecording, downloadAllUserRecordings, isRecordingSyncedToGoogleDrive, getStoragePreference } from "@/lib/utils/storage";
 import { playAudio } from "@/lib/utils/audio";
 import { useToast } from "@/hooks/use-toast";
 
@@ -88,7 +88,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
       const url = URL.createObjectURL(archiveBlob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `recordings_${user.id}.json`;
+      a.download = `recordings_${user.id}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -96,7 +96,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
       
       toast({
         title: "Download complete",
-        description: "All recordings have been downloaded"
+        description: "All recordings have been downloaded as ZIP file"
       });
     } catch (error) {
       toast({
@@ -134,6 +134,11 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
     }
     recordingsByLanguage[recording.language].push(recording);
   });
+  
+  // Get storage details
+  const storagePrefs = getStoragePreference();
+  const storageIcon = storagePrefs.type === "local" ? <Folder size={18} className="mr-2" /> : <Cloud size={18} className="mr-2" />;
+  const storageName = storagePrefs.type === "local" ? "Local Storage" : "Google Drive";
   
   return (
     <Card className="p-6">
@@ -200,6 +205,12 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                 {recordings.filter(r => r.needsRerecording).length}
               </dd>
             </div>
+            <div className="flex">
+              <dt className="w-40 font-medium text-gray-500">Storage:</dt>
+              <dd className="flex items-center">
+                {storageIcon} {storageName}
+              </dd>
+            </div>
           </dl>
           
           <Button 
@@ -208,7 +219,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
             disabled={downloadingAll}
           >
             <Archive size={18} className="mr-2" /> 
-            {downloadingAll ? "Preparing Archive..." : "Download All Recordings"}
+            {downloadingAll ? "Preparing Archive..." : "Download All as ZIP"}
           </Button>
         </div>
       </div>
@@ -269,7 +280,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                                 <Badge variant="destructive">Needs re-recording</Badge>
                               ) : (
                                 <Badge variant="secondary">
-                                  {isRecordingSyncedToGoogleDrive(recording.filePath) 
+                                  {storagePrefs.type === "google-drive" && isRecordingSyncedToGoogleDrive(recording.filePath) 
                                     ? "Synced to Drive" 
                                     : "Local only"}
                                 </Badge>
@@ -292,7 +303,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, recordings, o
                                 className="flex items-center"
                                 onClick={() => handleDownloadRecording(
                                   recording.filePath, 
-                                  recording.filePath.split("/").pop() || "recording.wav"
+                                  (recording.filePath.split("/").pop() || "recording") + ".wav"
                                 )}
                               >
                                 <Download size={16} />

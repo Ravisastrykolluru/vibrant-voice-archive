@@ -1,3 +1,4 @@
+
 // Type definitions for our storage
 export interface UserData {
   id: string;
@@ -24,6 +25,12 @@ export interface Language {
   name: string;
   sentences: string[];
   uploadDate: string;
+}
+
+// Storage preferences
+export interface StoragePreference {
+  type: "local" | "google-drive";
+  autoSync: boolean;
 }
 
 // Get all users from local storage
@@ -155,8 +162,13 @@ export const saveRecordingMetadata = (metadata: RecordingMetadata): void => {
   
   localStorage.setItem("recordings", JSON.stringify(recordings));
 
-  // Sync with Google Drive immediately if connected
-  syncRecordingToGoogleDrive(metadata);
+  // Get storage preference
+  const storagePrefs = getStoragePreference();
+
+  // Sync with Google Drive if that's the selected storage option
+  if (storagePrefs.type === "google-drive") {
+    syncRecordingToGoogleDrive(metadata);
+  }
   
   // Dispatch a custom event so other parts of the app can react to recording changes
   const event = new CustomEvent("recording-updated", { 
@@ -183,8 +195,13 @@ export const markForRerecording = (userId: string, language: string, sentenceInd
     recordings[recordingIndex].needsRerecording = true;
     localStorage.setItem("recordings", JSON.stringify(recordings));
     
-    // Sync the updated status to Google Drive
-    syncRecordingToGoogleDrive(recordings[recordingIndex]);
+    // Get storage preference
+    const storagePrefs = getStoragePreference();
+    
+    // Sync the updated status to Google Drive if that's the selected storage option
+    if (storagePrefs.type === "google-drive") {
+      syncRecordingToGoogleDrive(recordings[recordingIndex]);
+    }
     
     // Dispatch a custom event so the user gets notified immediately if they're recording
     const event = new CustomEvent("rerecording-requested", { 
@@ -193,6 +210,23 @@ export const markForRerecording = (userId: string, language: string, sentenceInd
     window.dispatchEvent(event);
     
     console.log(`Admin requested re-recording for user ${userId}, language ${language}, sentence ${sentenceIndex}`);
+  }
+};
+
+// Get storage preference
+export const getStoragePreference = (): StoragePreference => {
+  const prefs = localStorage.getItem("storagePreference");
+  return prefs ? JSON.parse(prefs) : { type: "local", autoSync: false };
+};
+
+// Set storage preference
+export const setStoragePreference = (prefs: StoragePreference): void => {
+  localStorage.setItem("storagePreference", JSON.stringify(prefs));
+  
+  // If changing to Google Drive and autoSync is enabled, trigger sync
+  if (prefs.type === "google-drive" && prefs.autoSync) {
+    const allRecordings = getRecordings();
+    allRecordings.forEach(recording => syncRecordingToGoogleDrive(recording));
   }
 };
 
@@ -238,10 +272,15 @@ export const saveRecordingBlob = (
       recordings[filePath] = reader.result;
       localStorage.setItem("recordingsBlobs", JSON.stringify(recordings));
       
-      // Sync to Google Drive immediately
-      const metadata = getRecordings().find(rec => rec.filePath === filePath);
-      if (metadata) {
-        syncRecordingToGoogleDrive(metadata);
+      // Get storage preference
+      const storagePrefs = getStoragePreference();
+      
+      // Sync to Google Drive if that's the selected storage option
+      if (storagePrefs.type === "google-drive") {
+        const metadata = getRecordings().find(rec => rec.filePath === filePath);
+        if (metadata) {
+          syncRecordingToGoogleDrive(metadata);
+        }
       }
       
       resolve(filePath);
@@ -276,69 +315,75 @@ export const getRecordingBlob = (filePath: string): Promise<Blob | null> => {
 };
 
 // Download all recordings for a specific language as a zip file
-export const downloadAllLanguageRecordings = (language: string): Promise<Blob> => {
+export const downloadAllLanguageRecordings = async (language: string): Promise<Blob> => {
+  // Dynamically import JSZip
+  const JSZip = await import('jszip').then(mod => mod.default);
+  const zip = new JSZip();
+  
   const recordings = getRecordings().filter(rec => rec.language === language);
-  // In a real app, this would create a proper ZIP file with all recordings
-  // For now, we'll create a simple JSON file with the metadata
-  const data = {
-    language,
-    recordings,
-    exportDate: new Date().toISOString()
-  };
   
-  return Promise.resolve(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-};
-
-// Get total storage used (in bytes)
-export const getTotalStorageUsed = (): number => {
-  const recordings = localStorage.getItem("recordingsBlobs") || "{}";
-  return new Blob([recordings]).size;
-};
-
-// Generate a random 4-digit user ID
-export const generateUserId = (): string => {
-  const min = 1000;
-  const max = 9999;
-  let id = Math.floor(Math.random() * (max - min + 1)) + min;
-  
-  // Ensure the ID is unique
-  const users = getUsers();
-  const existingIds = users.map(user => parseInt(user.id));
-  
-  while (existingIds.includes(id)) {
-    id = Math.floor(Math.random() * (max - min + 1)) + min;
+  // Add each recording to the zip
+  for (const recording of recordings) {
+    try {
+      const blob = await getRecordingBlob(recording.filePath);
+      if (blob) {
+        // Use the folder structure: recordings/YYYY-MM-DD/gender_language_userID/
+        const folderPath = recording.filePath.substring(0, recording.filePath.lastIndexOf('/') + 1);
+        const fileName = recording.filePath.split('/').pop() || 'recording.wav';
+        
+        // Add file to zip in the proper directory structure
+        zip.file(`${folderPath}${fileName}`, blob);
+      }
+    } catch (error) {
+      console.error(`Error adding recording to zip: ${recording.filePath}`, error);
+    }
   }
   
-  return id.toString();
+  // Generate the zip file
+  return await zip.generateAsync({ type: "blob" });
 };
 
-// Get all recordings for a user in a specific language
-export const getUserLanguageRecordings = (userId: string, language: string): RecordingMetadata[] => {
-  const recordings = getRecordings();
-  return recordings.filter(rec => rec.userId === userId && rec.language === language);
-};
-
-// Download all recordings for a user
+// Download all recordings for a user as a zip file
 export const downloadAllUserRecordings = async (userId: string): Promise<Blob> => {
+  // Dynamically import JSZip
+  const JSZip = await import('jszip').then(mod => mod.default);
+  const zip = new JSZip();
+  
   // Get all recordings for this user
   const userRecordings = getUserRecordings(userId);
   
-  // Create a zip file with all recordings
-  // In a real app, we would use JSZip or a similar library
-  // For this demo, we'll just concatenate all the blobs
+  // Get user info for folder naming
+  const user = findUserById(userId);
   
-  const recordingsData: { [key: string]: any } = {};
+  // Add each recording to the zip
+  for (const recording of userRecordings) {
+    try {
+      const blob = await getRecordingBlob(recording.filePath);
+      if (blob) {
+        // Use the folder structure: recordings/YYYY-MM-DD/gender_language_userID/
+        const folderPath = recording.filePath.substring(0, recording.filePath.lastIndexOf('/') + 1);
+        const fileName = recording.filePath.split('/').pop() || 'recording.wav';
+        
+        // Add file to zip in the proper directory structure
+        zip.file(`${folderPath}${fileName}`, blob);
+      }
+    } catch (error) {
+      console.error(`Error adding recording to zip: ${recording.filePath}`, error);
+    }
+  }
+  
+  // Add metadata JSON
   const metadataFile = {
     userId,
+    userName: user?.name || "Unknown",
+    gender: user?.gender || "Unknown",
     recordings: userRecordings,
     exportDate: new Date().toISOString()
   };
+  zip.file('metadata.json', JSON.stringify(metadataFile, null, 2));
   
-  recordingsData['metadata.json'] = JSON.stringify(metadataFile, null, 2);
-  
-  // In a real implementation, this would create a proper ZIP file
-  // For now, we'll just return a JSON blob
-  return new Blob([JSON.stringify(recordingsData)], { type: 'application/json' });
+  // Generate the zip file
+  return await zip.generateAsync({ type: "blob" });
 };
 
 // Admin password management
@@ -389,8 +434,15 @@ export const getRerecordingCount = (userId: string, language: string): number =>
   return recordings.filter(rec => rec.needsRerecording === true).length;
 };
 
+// Get all recordings for a user in a specific language
+export const getUserLanguageRecordings = (userId: string, language: string): RecordingMetadata[] => {
+  const recordings = getRecordings();
+  return recordings.filter(rec => rec.userId === userId && rec.language === language);
+};
+
 // Get bulk download status for Google Drive folder
 export const canBulkDownloadFromGoogleDrive = (): boolean => {
   const config = getGoogleDriveConfig();
-  return config.connected && !!config.folderId;
+  const prefs = getStoragePreference();
+  return (prefs.type === "google-drive" && config.connected && !!config.folderId);
 };

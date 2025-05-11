@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Settings, Users, HardDrive, Upload, Plus, Download } from "lucide-react";
+import { LogOut, Settings, Users, HardDrive, Upload, Plus, Download, Folder, Cloud } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,7 +16,8 @@ import {
   getGoogleDriveConfig, 
   getRecordings,
   downloadAllLanguageRecordings,
-  canBulkDownloadFromGoogleDrive
+  canBulkDownloadFromGoogleDrive,
+  getStoragePreference
 } from "@/lib/utils/storage";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
@@ -59,6 +60,7 @@ const AdminDashboard: React.FC = () => {
   const [recordingCount, setRecordingCount] = useState(0);
   const [flaggedCount, setFlaggedCount] = useState(0);
   const [canBulkDownload, setCanBulkDownload] = useState(false);
+  const [storageType, setStorageType] = useState<"local" | "google-drive">("local");
   
   useEffect(() => {
     // Load dashboard data
@@ -85,6 +87,10 @@ const AdminDashboard: React.FC = () => {
     const config = getGoogleDriveConfig();
     setDriveConfig(config);
     setCanBulkDownload(canBulkDownloadFromGoogleDrive());
+    
+    // Get storage preference
+    const storagePrefs = getStoragePreference();
+    setStorageType(storagePrefs.type);
     
     // Count total recordings
     const allRecordings = getRecordings();
@@ -132,14 +138,14 @@ const AdminDashboard: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${language.name.toLowerCase()}_recordings.json`;
+      link.download = `${language.name.toLowerCase()}_recordings.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
       toast({
         title: "Download complete",
-        description: `All ${language.name} recordings have been downloaded`
+        description: `All ${language.name} recordings have been downloaded as ZIP`
       });
     } catch (error) {
       toast({
@@ -218,9 +224,13 @@ const AdminDashboard: React.FC = () => {
                   <div>
                     <p className="text-gray-500">Storage Used</p>
                     <p className="text-3xl font-bold">{formatStorageSize(storageUsed)}</p>
-                    {driveConfig?.connected && driveConfig?.folderName && (
-                      <p className="text-xs text-green-600 mt-1">Backed up to Google Drive: {driveConfig.folderName}</p>
-                    )}
+                    <div className="flex items-center text-xs mt-1">
+                      {storageType === "local" ? (
+                        <><Folder size={12} className="mr-1 text-blue-600" /> Local Storage</>
+                      ) : (
+                        <><Cloud size={12} className="mr-1 text-green-600" /> Google Drive</>
+                      )}
+                    </div>
                   </div>
                   <HardDrive className="h-10 w-10 text-orange-500 opacity-80" />
                 </div>
@@ -244,11 +254,13 @@ const AdminDashboard: React.FC = () => {
                     <div className="bg-green-50 border border-green-200 p-4 rounded-md mb-4">
                       <p className="text-green-700 flex items-center">
                         <Download size={18} className="mr-2" />
-                        Bulk downloads available from Google Drive
+                        Bulk downloads available from {storageType === "local" ? "Local Storage" : "Google Drive"}
                       </p>
-                      <p className="text-sm text-green-600 mt-1">
-                        All recordings are being backed up to: {driveConfig?.folderName}
-                      </p>
+                      {storageType === "google-drive" && driveConfig?.folderName && (
+                        <p className="text-sm text-green-600 mt-1">
+                          All recordings are being backed up to: {driveConfig.folderName}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
