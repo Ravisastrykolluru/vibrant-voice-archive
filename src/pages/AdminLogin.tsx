@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Google, LogIn } from "lucide-react";
+import { ArrowLeft, Cloud, LogIn } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -184,7 +184,7 @@ const AdminLogin: React.FC = () => {
                 className="w-full flex items-center justify-center gap-2"
                 onClick={() => setShowGoogleDriveDialog(true)}
               >
-                <Google size={16} /> Connect Google Drive
+                <Cloud size={16} /> Connect Google Drive
               </Button>
             )}
           </div>
