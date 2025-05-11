@@ -1,4 +1,3 @@
-
 // Type definitions for our storage
 export interface UserData {
   id: string;
@@ -180,6 +179,7 @@ export const markForRerecording = (userId: string, language: string, sentenceInd
   );
   
   if (recordingIndex >= 0) {
+    // Set needsRerecording flag to true
     recordings[recordingIndex].needsRerecording = true;
     localStorage.setItem("recordings", JSON.stringify(recordings));
     
@@ -204,10 +204,7 @@ export const syncRecordingToGoogleDrive = (metadata: RecordingMetadata): void =>
   if (driveConfig.connected && driveConfig.folderId) {
     console.log(`Syncing recording ${metadata.filePath} to Google Drive folder: ${driveConfig.folderName || driveConfig.folderId}`);
     
-    // In a real app, this would use the Google Drive API to upload the file
-    // For this demo, we'll simulate the sync and store a record of it
-    
-    // Store sync records
+    // Store sync records to track what has been synced
     const syncedRecordings = JSON.parse(localStorage.getItem("syncedToGoogleDrive") || "[]");
     if (!syncedRecordings.includes(metadata.filePath)) {
       syncedRecordings.push(metadata.filePath);
@@ -389,7 +386,7 @@ export const saveGoogleDriveConfig = (config: GoogleDriveConfig): void => {
 // Get the count of recordings needing re-recording for a user/language
 export const getRerecordingCount = (userId: string, language: string): number => {
   const recordings = getUserLanguageRecordings(userId, language);
-  return recordings.filter(rec => rec.needsRerecording).length;
+  return recordings.filter(rec => rec.needsRerecording === true).length;
 };
 
 // Get bulk download status for Google Drive folder

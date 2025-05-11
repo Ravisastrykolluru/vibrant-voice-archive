@@ -509,15 +509,7 @@ const RecordingSession: React.FC = () => {
                     {language.sentences[currentSentenceIndex]}
                   </div>
                   
-                  {/* Waveform display */}
-                  <div className="mt-6">
-                    <AudioWaveform 
-                      audioBlob={recordingBlob}
-                      playing={isPlaying}
-                      height={60}
-                      color={isRecording ? "#ef4444" : "#4a90e2"}
-                    />
-                  </div>
+                  {/* Waveform display removed as requested */}
                   
                   <div className="flex justify-between mt-4">
                     <Button 

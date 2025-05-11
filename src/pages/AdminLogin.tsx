@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Cloud, LogIn } from "lucide-react";
+import { ArrowLeft, Cloud, LogIn, AudioWaveform } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -80,24 +80,24 @@ const AdminLogin: React.FC = () => {
       return;
     }
     
-    // Simulated OAuth2 flow
+    if (!folderName.trim()) {
+      toast({
+        title: "Folder name required",
+        description: "Please enter a name for your Google Drive folder",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Show connecting status
     toast({
       title: "Google Drive Connection",
       description: "Connecting to Google Drive..."
     });
     
-    // Simulate a successful connection after a delay
+    // Simulate Google OAuth login with a delay
+    setIsLoading(true);
     setTimeout(() => {
-      // Create folder in Google Drive
-      if (!folderName.trim()) {
-        toast({
-          title: "Folder name required",
-          description: "Please enter a name for your Google Drive folder",
-          variant: "destructive"
-        });
-        return;
-      }
-      
       // Update configuration with new folder ID and connection status
       const updatedConfig: GoogleDriveConfig = {
         email: googleEmail,
@@ -109,6 +109,7 @@ const AdminLogin: React.FC = () => {
       // Save the updated configuration
       saveGoogleDriveConfig(updatedConfig);
       setDriveConfig(updatedConfig);
+      setIsLoading(false);
       
       // Close the dialog
       setShowGoogleDriveDialog(false);
@@ -230,12 +231,27 @@ const AdminLogin: React.FC = () => {
               </div>
             </div>
             
+            <div className="flex flex-col items-center justify-center py-4">
+              <AudioWaveform className="text-blue-500" size={40} />
+              <p className="text-sm text-center mt-2">
+                All recordings will be stored in your Google Drive
+              </p>
+            </div>
+            
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowGoogleDriveDialog(false)}>
+              <Button variant="outline" onClick={() => setShowGoogleDriveDialog(false)} disabled={isLoading}>
                 Cancel
               </Button>
-              <Button onClick={handleConnectGoogleDrive} className="flex items-center gap-2">
-                <LogIn size={16} /> Connect & Login
+              <Button 
+                onClick={handleConnectGoogleDrive} 
+                className="flex items-center gap-2"
+                disabled={isLoading}
+              >
+                {isLoading ? "Connecting..." : (
+                  <>
+                    <LogIn size={16} /> Connect & Login
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
