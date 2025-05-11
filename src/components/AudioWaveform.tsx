@@ -45,7 +45,7 @@ const AudioWaveform: React.FC<AudioWaveformProps> = ({
     
     if (!playing) {
       // Static waveform
-      visualizeWaveform(canvasRef.current, waveformData, color);
+      visualizeWaveform(canvasRef.current, waveformData);
     } else {
       // Animated waveform
       const animate = () => {
@@ -59,7 +59,7 @@ const AudioWaveform: React.FC<AudioWaveformProps> = ({
           animatedData[i] = originalValue * (0.8 + 0.2 * Math.sin(i * 0.2 + animationOffset.current));
         }
         
-        visualizeWaveform(canvasRef.current, animatedData, color);
+        visualizeWaveform(canvasRef.current, animatedData);
         animationOffset.current += 0.2;
         requestRef.current = requestAnimationFrame(animate);
       };
@@ -78,7 +78,7 @@ const AudioWaveform: React.FC<AudioWaveformProps> = ({
   useEffect(() => {
     if (!audioBlob && canvasRef.current) {
       const silentWaveform = Array(50).fill(0.05);
-      visualizeWaveform(canvasRef.current, silentWaveform, color);
+      visualizeWaveform(canvasRef.current, silentWaveform);
     }
   }, [audioBlob, color]);
   
