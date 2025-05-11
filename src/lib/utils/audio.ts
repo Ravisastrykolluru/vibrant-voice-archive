@@ -70,3 +70,47 @@ export const calculateSNR = async (audioBlob: Blob): Promise<number> => {
   // For this demo, we'll return a random value between 15 and 35 dB
   return Math.random() * 20 + 15;
 };
+
+// Generate waveform data from an audio blob
+export const generateWaveformData = async (audioBlob: Blob, numPoints = 50): Promise<number[]> => {
+  try {
+    // In a production app, we would process the actual audio data
+    // For this demo, we'll generate random waveform data
+    return Array.from({ length: numPoints }, () => Math.random());
+  } catch (error) {
+    console.error("Error generating waveform data:", error);
+    return Array(numPoints).fill(0);
+  }
+};
+
+// Visualize waveform data
+export const visualizeWaveform = (canvas: HTMLCanvasElement, waveformData: number[]): void => {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Set colors
+  ctx.fillStyle = '#3B82F6'; // blue-500
+  
+  // Calculate bar width
+  const barWidth = width / waveformData.length;
+  const barPadding = Math.max(1, barWidth * 0.2);
+  
+  // Draw bars
+  waveformData.forEach((amplitude, i) => {
+    const x = i * barWidth;
+    const barHeight = Math.max(2, amplitude * height * 0.8); // Min height of 2px
+    
+    ctx.fillRect(
+      x + barPadding / 2, 
+      (height - barHeight) / 2, 
+      barWidth - barPadding, 
+      barHeight
+    );
+  });
+};

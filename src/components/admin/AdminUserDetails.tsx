@@ -1,6 +1,5 @@
-
 import React, { useState } from "react";
-import { ArrowLeft, Download, Play, Bell, Archive } from "lucide-react";
+import { ArrowLeft, Download, Play, Bell, Archive, RefreshCw, Folder, Cloud } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";

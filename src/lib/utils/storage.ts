@@ -1,4 +1,3 @@
-
 // Type definitions for our storage
 export interface UserData {
   id: string;
@@ -32,6 +31,21 @@ export interface StoragePreference {
   type: "local" | "google-drive";
   autoSync: boolean;
 }
+
+// Generate a unique 4-digit user ID that doesn't conflict with existing IDs
+export const generateUserId = (): string => {
+  const users = getUsers();
+  const existingIds = users.map(user => user.id);
+  
+  let newId: string;
+  do {
+    // Generate a random 4-digit number
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    newId = randomNum.toString();
+  } while (existingIds.includes(newId));
+  
+  return newId;
+};
 
 // Get all users from local storage
 export const getUsers = (): UserData[] => {
@@ -75,7 +89,7 @@ export const getLanguages = (): Language[] => {
       {
         id: "lang_telugu",
         name: "Telugu",
-        sentences: ["నమస్కారం, మీరు ఎలా ఉన్నారు?", "నేను బాగున్నాను, ధన్యవాదాలు.", "ఇది పరీక్ష వాక్యం."],
+        sentences: ["నమస్కారం, మీరు ఎలా ఉన్నారు?", "నేను బాగున్నాను, ధన్యవादాలు.", "ఇది పరీక్ష వాక్యం."],
         uploadDate: new Date().toISOString()
       },
       {
@@ -99,7 +113,7 @@ export const getLanguages = (): Language[] => {
       {
         id: "lang_bengali",
         name: "Bengali",
-        sentences: ["নমস্কার, আপনি কেমন আছেন?", "আমি ভালো আছি, ধন্যবাদ।", "এটি একটি পরীক্ষামূলক বাক্য।"],
+        sentences: ["নমস্কার, আপনি কেমন আছেন?", "আমি ভালো আছি, ধন্যবাদ।", "এটি একটি পরীক্ষামূলক বা��্য।"],
         uploadDate: new Date().toISOString()
       },
       {
@@ -445,4 +459,19 @@ export const canBulkDownloadFromGoogleDrive = (): boolean => {
   const config = getGoogleDriveConfig();
   const prefs = getStoragePreference();
   return (prefs.type === "google-drive" && config.connected && !!config.folderId);
+};
+
+// Get total storage used by recordings (in MB)
+export const getTotalStorageUsed = (): number => {
+  try {
+    const recordingsBlobs = localStorage.getItem("recordingsBlobs");
+    if (!recordingsBlobs) return 0;
+    
+    // Calculate size in MB
+    const sizeInBytes = new Blob([recordingsBlobs]).size;
+    return Math.round((sizeInBytes / (1024 * 1024)) * 100) / 100;
+  } catch (error) {
+    console.error("Error calculating storage usage:", error);
+    return 0;
+  }
 };
