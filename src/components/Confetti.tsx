@@ -11,7 +11,11 @@ interface ConfettiPiece {
   opacity: number;
 }
 
-const Confetti: React.FC = () => {
+interface ConfettiProps {
+  contained?: boolean; // If true, confetti will be contained within parent element
+}
+
+const Confetti: React.FC<ConfettiProps> = ({ contained = false }) => {
   const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
   const COLORS = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#ff8800", "#8800ff"];
   
@@ -55,7 +59,7 @@ const Confetti: React.FC = () => {
   }, []);
   
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+    <div className={contained ? "absolute inset-0 pointer-events-none overflow-hidden" : "fixed inset-0 pointer-events-none overflow-hidden z-50"}>
       {pieces.map(piece => (
         <div
           key={piece.id}

@@ -12,7 +12,7 @@ const Index = () => {
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-4xl text-center space-y-10">
           <h1 className="text-5xl md:text-7xl font-bold animate-fade-in">
-            Vibrant Voice Archive
+            Speech Recording System
           </h1>
           
           <p className="text-xl md:text-2xl max-w-2xl mx-auto opacity-80 animate-fade-in" style={{ animationDelay: "0.2s" }}>
@@ -35,7 +35,7 @@ const Index = () => {
         </div>
         
         <footer className="absolute bottom-6 text-center w-full opacity-70">
-          <p>© 2025 Vibrant Voice Archive. All rights reserved.</p>
+          <p>© 2025 Speech Processing Lab IIIT Hyderabad. All rights reserved.</p>
         </footer>
       </div>
     </Layout>

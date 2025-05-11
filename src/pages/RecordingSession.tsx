@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import AudioWaveform from "@/components/AudioWaveform";
+import CelebrationCard from "@/components/CelebrationCard";
 import { 
   findUserById, 
   getLanguages, 
@@ -15,8 +17,14 @@ import {
   getUserRecordings,
   getRerecordingCount 
 } from "@/lib/utils/storage";
-import { createRecordingPath, createRecordingFilename, startRecording, stopRecording, playAudio } from "@/lib/utils/audio";
-import Confetti from "@/components/Confetti";
+import { 
+  createRecordingPath, 
+  createRecordingFilename, 
+  startRecording, 
+  stopRecording, 
+  playAudio, 
+  calculateSNR 
+} from "@/lib/utils/audio";
 
 const RecordingSession: React.FC = () => {
   const { toast } = useToast();
@@ -25,6 +33,7 @@ const RecordingSession: React.FC = () => {
   
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
   const [user, setUser] = useState<any>(null);
   const [language, setLanguage] = useState<any>(null);
@@ -35,8 +44,10 @@ const RecordingSession: React.FC = () => {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showThankYouDialog, setShowThankYouDialog] = useState(false);
   const [recordingMode, setRecordingMode] = useState<'regular' | 'rerecording'>('regular');
+  const [waveformData, setWaveformData] = useState<number[]>([]);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Listen for re-recording requests from admin
   useEffect(() => {
@@ -193,7 +204,21 @@ const RecordingSession: React.FC = () => {
   const handlePlayRecording = () => {
     if (!recordingBlob) return;
     
-    playAudio(recordingBlob);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    setIsPlaying(true);
+    
+    const audio = playAudio(recordingBlob);
+    audioRef.current = audio;
+    
+    audio.onended = () => {
+      setIsPlaying(false);
+      audioRef.current = null;
+    };
+    
     toast({ title: "Playing recording" });
   };
   
@@ -203,6 +228,9 @@ const RecordingSession: React.FC = () => {
     setIsSaving(true);
     
     try {
+      // Calculate SNR value for quality assessment
+      const snr = await calculateSNR(recordingBlob);
+      
       // Create file path and name
       const date = new Date();
       const filePath = createRecordingPath(date, user.gender, language.name, userId!);
@@ -220,22 +248,29 @@ const RecordingSession: React.FC = () => {
         sentenceText: language.sentences[currentSentenceIndex],
         recordingDate: date.toISOString(),
         filePath: fullPath,
-        needsRerecording: false,
-        snr: Math.random() * 30 + 10  // Random SNR value between 10 and 40 dB
+        needsRerecording: false, // Reset the re-recording flag
+        snr: snr
       });
       
       // Mark as saved and remove from re-recording list if it was there
-      setSavedRecordings(prev => [...prev.filter(idx => idx !== currentSentenceIndex), currentSentenceIndex]);
+      setSavedRecordings(prev => {
+        // Filter out current sentence if it exists, then add it back
+        const filteredList = prev.filter(idx => idx !== currentSentenceIndex);
+        return [...filteredList, currentSentenceIndex];
+      });
+      
+      // Remove from re-recordings list
       setRerecordingSentences(prev => prev.filter(idx => idx !== currentSentenceIndex));
       
       toast({
         title: "Recording saved",
-        description: "Successfully saved to your recordings",
+        description: "Successfully saved to your recordings and synced to Google Drive",
       });
 
       // Check if all sentences are recorded
       checkSessionCompletion();
     } catch (error) {
+      console.error("Save error:", error);
       toast({
         title: "Failed to save recording",
         description: "An error occurred while saving",
@@ -256,17 +291,19 @@ const RecordingSession: React.FC = () => {
     
     // Check if all re-recordings are done
     const allRerecordingsDone = rerecordingSentences.every(index => 
-      savedRecordings.includes(index)
+      !savedRecordings.includes(index) || // Not requiring re-recording anymore
+      (savedRecordings.includes(index))   // Or has been re-recorded
     );
     
-    if (allSentencesRecorded && allRerecordingsDone) {
-      // Show celebration!
+    if (allSentencesRecorded && rerecordingSentences.length === 0) {
+      // If all sentences recorded and no re-recordings needed, show celebration
       setShowConfetti(true);
       setShowCompletionDialog(true);
     } else if (allSentencesRecorded && !allRerecordingsDone && recordingMode === 'regular') {
       // Switch to re-recording mode
       setRecordingMode('rerecording');
-      const nextRerecording = rerecordingSentences.find(idx => !savedRecordings.includes(idx));
+      // Find next sentence that needs re-recording
+      const nextRerecording = rerecordingSentences.find(idx => true);
       if (nextRerecording !== undefined) {
         setCurrentSentenceIndex(nextRerecording);
         setRecordingBlob(null);
@@ -377,38 +414,30 @@ const RecordingSession: React.FC = () => {
   return (
     <Layout showBackground={false}>
       <div className="min-h-screen flex flex-col">
-        {showConfetti && <Confetti />}
-        
         {/* Celebration dialog */}
         <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-          <DialogContent className="sm:max-w-md text-center">
-            <DialogHeader>
-              <DialogTitle className="text-2xl">Congratulations! 🎉</DialogTitle>
-            </DialogHeader>
-            <div className="py-8 flex flex-col items-center space-y-4">
-              <Trophy size={64} className="text-yellow-500" />
-              <p className="text-lg">You've completed all recordings for {language.name}!</p>
-              <p>Thank you for your contribution to our speech collection project.</p>
+          <DialogContent className="sm:max-w-md">
+            <CelebrationCard
+              title="Congratulations! 🎉"
+              message={`You've completed all recordings for ${language.name}!`}
+            >
               <Button onClick={() => {
                 setShowCompletionDialog(false);
                 navigate('/');
               }} className="mt-4">
                 Return to Home
               </Button>
-            </div>
+            </CelebrationCard>
           </DialogContent>
         </Dialog>
         
         {/* Thank you dialog for already completed recordings */}
         <Dialog open={showThankYouDialog} onOpenChange={setShowThankYouDialog}>
-          <DialogContent className="sm:max-w-md text-center">
-            <DialogHeader>
-              <DialogTitle className="text-2xl">Thank You! 🙏</DialogTitle>
-            </DialogHeader>
-            <div className="py-8 flex flex-col items-center space-y-4">
-              <Trophy size={64} className="text-yellow-500" />
-              <p className="text-lg">You've already completed all recordings for {language.name}!</p>
-              <p>We appreciate your contribution to our speech collection project.</p>
+          <DialogContent className="sm:max-w-md">
+            <CelebrationCard
+              title="Thank You! 🙏"
+              message={`You've already completed all recordings for ${language.name}!`}
+            >
               <DialogFooter className="flex flex-col sm:flex-row sm:justify-center w-full gap-2">
                 <Button onClick={() => {
                   setShowThankYouDialog(false);
@@ -426,7 +455,7 @@ const RecordingSession: React.FC = () => {
                   Continue Browsing
                 </Button>
               </DialogFooter>
-            </div>
+            </CelebrationCard>
           </DialogContent>
         </Dialog>
 
@@ -478,6 +507,16 @@ const RecordingSession: React.FC = () => {
                   </h2>
                   <div className="bg-gray-50 rounded-lg p-6 min-h-[200px] flex items-center justify-center text-center text-xl">
                     {language.sentences[currentSentenceIndex]}
+                  </div>
+                  
+                  {/* Waveform display */}
+                  <div className="mt-6">
+                    <AudioWaveform 
+                      audioBlob={recordingBlob}
+                      playing={isPlaying}
+                      height={60}
+                      color={isRecording ? "#ef4444" : "#4a90e2"}
+                    />
                   </div>
                   
                   <div className="flex justify-between mt-4">
@@ -548,6 +587,7 @@ const RecordingSession: React.FC = () => {
                         <Button 
                           className="record-button bg-black text-white"
                           onClick={handlePlayRecording}
+                          disabled={isPlaying}
                         >
                           <Play size={24} />
                         </Button>
@@ -562,7 +602,7 @@ const RecordingSession: React.FC = () => {
                         <Button 
                           className="record-button bg-green-600 text-white"
                           onClick={handleSaveRecording}
-                          disabled={isSaving || savedRecordings.includes(currentSentenceIndex)}
+                          disabled={isSaving}
                         >
                           <Save size={24} />
                         </Button>
@@ -626,11 +666,15 @@ const RecordingSession: React.FC = () => {
                       <div className="flex justify-between mb-1">
                         <p className="text-gray-500">Re-recording Progress</p>
                         <p className="text-gray-500">
-                          {Math.round(((rerecordingSentences.length - rerecordingsRemaining) / rerecordingSentences.length) * 100)}%
+                          {rerecordingSentences.length > 0 
+                            ? Math.round(((rerecordingSentences.length - rerecordingsRemaining) / rerecordingSentences.length) * 100)
+                            : 0}%
                         </p>
                       </div>
                       <Progress 
-                        value={((rerecordingSentences.length - rerecordingsRemaining) / rerecordingSentences.length) * 100} 
+                        value={rerecordingSentences.length > 0 
+                          ? ((rerecordingSentences.length - rerecordingsRemaining) / rerecordingSentences.length) * 100
+                          : 0} 
                         className="mt-2 bg-red-100" 
                       />
                     </div>
