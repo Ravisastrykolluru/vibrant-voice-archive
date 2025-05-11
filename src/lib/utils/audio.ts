@@ -111,4 +111,3 @@ export const visualizeWaveform = (
     ctx.fillRect(x, y, barWidth, barHeight);
   });
 };
-
