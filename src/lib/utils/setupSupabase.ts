@@ -30,6 +30,39 @@ export const initializeSupabase = async (): Promise<void> => {
       }
     }
     
+    // Check if the notifications table exists
+    const { error: tableCheckError } = await supabase.from('notifications').select('id').limit(1);
+    
+    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
+      console.log("Creating notifications table...");
+      
+      // Create the notifications table
+      const { error: createTableError } = await supabase.rpc('create_notifications_table');
+      if (createTableError) {
+        console.error("Error creating notifications table:", createTableError);
+        
+        // Try direct SQL as fallback (this might not work depending on permissions)
+        try {
+          await supabase.rpc('execute_sql', {
+            sql_query: `
+              CREATE TABLE IF NOT EXISTS public.notifications (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                read BOOLEAN NOT NULL DEFAULT false,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+              );
+            `
+          });
+          console.log("Created notifications table via execute_sql");
+        } catch (sqlError) {
+          console.error("Failed to create notifications table via execute_sql:", sqlError);
+        }
+      } else {
+        console.log("Notifications table created successfully");
+      }
+    }
+    
     console.log("Supabase initialization complete");
   } catch (error) {
     console.error("Error initializing Supabase:", error);

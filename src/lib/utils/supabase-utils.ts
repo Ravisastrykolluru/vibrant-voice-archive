@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
@@ -45,7 +46,8 @@ export const saveUser = async (userData: {
     age: userData.age,
     gender: userData.gender,
     contact_number: userData.contactNumber,
-    unique_code: uniqueCode
+    unique_code: uniqueCode,
+    created_at: new Date().toISOString() // Ensure creation date is set
   });
   
   if (userError) {
@@ -192,7 +194,9 @@ export const getRerecordingCount = async (userId: string, language: string): Pro
 
 // File Storage Functions
 export const saveRecordingBlob = async (blob: Blob, userId: string, language: string, sentenceIndex: number): Promise<string> => {
-  const fileName = `${userId}/${language}/${sentenceIndex}.wav`;
+  // Create date-based folder structure
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const fileName = `${today}/${userId}/${language}/${sentenceIndex}.wav`;
   
   const { data, error } = await supabase
     .storage
@@ -301,4 +305,27 @@ export const cleanRecordingData = async (): Promise<void> => {
   // Clear storage too
   // This is a simplified approach; in reality we'd want to list and delete all files
   // but that would require iterating through storage which is more complex
+};
+
+// Get notifications for a user
+export const getUserNotifications = async (userId: string): Promise<any[]> => {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+    
+  if (error || !data) {
+    return [];
+  }
+  
+  return data;
+};
+
+// Mark notification as read
+export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+  await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('id', notificationId);
 };
