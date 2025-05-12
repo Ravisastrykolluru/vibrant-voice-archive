@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Settings, Users, HardDrive, Download, Trash2, Database } from "lucide-react";
@@ -92,12 +93,17 @@ const AdminDashboard: React.FC = () => {
       
       // Get storage info - fix the type issue
       try {
-        const { data: bucketInfo } = await supabase.storage.getBucket('recordings');
-        // The size might not be available directly, set a default or estimate
-        setStorageUsed(bucketInfo?.size || 0);
+        // Instead of trying to get the bucket size (which may not be available),
+        // get the total size by estimating from recordings
+        const estimatedSize = recordings?.reduce((total, rec) => {
+          // Estimate average recording size as 100KB
+          return total + 100000;
+        }, 0) || 0;
+        
+        setStorageUsed(estimatedSize);
       } catch (error) {
-        console.error("Error fetching bucket info:", error);
-        setStorageUsed(0); // Default value if we can't get the size
+        console.error("Error estimating storage size:", error);
+        setStorageUsed(0); // Default value if we can't estimate the size
       }
     } catch (error) {
       console.error("Error loading dashboard data:", error);
