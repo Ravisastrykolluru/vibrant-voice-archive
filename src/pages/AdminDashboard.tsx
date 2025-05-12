@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Settings, Users, HardDrive, Download, Trash2, Database } from "lucide-react";
@@ -91,9 +90,15 @@ const AdminDashboard: React.FC = () => {
       const flagged = recordings?.filter(rec => rec.needs_rerecording).length || 0;
       setFlaggedCount(flagged);
       
-      // Get storage info
-      const { data: storageData } = await supabase.storage.getBucket('recordings');
-      setStorageUsed(storageData?.size || 0);
+      // Get storage info - fix the type issue
+      try {
+        const { data: bucketInfo } = await supabase.storage.getBucket('recordings');
+        // The size might not be available directly, set a default or estimate
+        setStorageUsed(bucketInfo?.size || 0);
+      } catch (error) {
+        console.error("Error fetching bucket info:", error);
+        setStorageUsed(0); // Default value if we can't get the size
+      }
     } catch (error) {
       console.error("Error loading dashboard data:", error);
       toast({

@@ -9,10 +9,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { saveLanguage, Language } from "@/lib/utils/storage";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Language {
+  id: string;
+  name: string;
+  sentences: string[];
+  uploadDate: string;
+}
 
 interface AdminLanguageManagerProps {
-  languages: Language[];
+  languages: any[];
   onDelete: (id: string) => void;
   onLanguageAdded: () => void;
 }
@@ -70,16 +77,28 @@ const AdminLanguageManager: React.FC<AdminLanguageManagerProps> = ({
         return;
       }
       
-      // Create a new language entry
-      const newLanguage: Language = {
+      // Create a new language entry directly in Supabase
+      const newLanguage = {
         id: Date.now().toString(),
         name: languageName,
         sentences,
-        uploadDate: new Date().toISOString()
+        upload_date: new Date().toISOString()
       };
       
-      // Save the language
-      saveLanguage(newLanguage);
+      // Save the language to Supabase
+      const { error } = await supabase
+        .from('languages')
+        .insert(newLanguage);
+        
+      if (error) {
+        console.error("Error saving language:", error);
+        toast({
+          title: "Upload failed",
+          description: "Could not save the language to the database",
+          variant: "destructive"
+        });
+        return;
+      }
       
       toast({
         title: "Language added",
@@ -93,6 +112,7 @@ const AdminLanguageManager: React.FC<AdminLanguageManagerProps> = ({
       onLanguageAdded();
       
     } catch (error) {
+      console.error("Upload error:", error);
       toast({
         title: "Upload failed",
         description: "Could not process the file",
@@ -196,7 +216,7 @@ const AdminLanguageManager: React.FC<AdminLanguageManagerProps> = ({
               <TableRow key={language.id}>
                 <TableCell className="font-medium">{language.name}</TableCell>
                 <TableCell>{language.sentences.length}</TableCell>
-                <TableCell>{new Date(language.uploadDate).toLocaleDateString()}</TableCell>
+                <TableCell>{new Date(language.upload_date || language.uploadDate).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Button 
                     variant="ghost" 

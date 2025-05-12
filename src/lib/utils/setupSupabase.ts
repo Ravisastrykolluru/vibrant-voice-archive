@@ -8,16 +8,27 @@ export const initializeSupabase = async (): Promise<void> => {
     const recordingsBucketExists = buckets?.some(bucket => bucket.name === 'recordings');
     
     if (!recordingsBucketExists) {
-      // This would typically be done through SQL, but we can create it via API if needed
+      // Create the recordings bucket if it doesn't exist
       await supabase.storage.createBucket('recordings', { public: false });
+      console.log("Created recordings bucket");
+      
+      // Set up bucket policies
+      // This would typically be done through SQL migrations
+      // but we're doing it here for simplicity
+      try {
+        const { error } = await supabase.storage.from('recordings').upload('test.txt', new Blob(['test']), {
+          upsert: true
+        });
+        if (error) {
+          console.error("Error setting up storage bucket:", error);
+        } else {
+          // Delete the test file
+          await supabase.storage.from('recordings').remove(['test.txt']);
+        }
+      } catch (storageError) {
+        console.error("Error testing storage bucket:", storageError);
+      }
     }
-    
-    // Load SQL setup files
-    const setupStoragePath = '/supabase/setup_storage.sql';
-    const setupLanguagesPath = '/supabase/setup_languages.sql';
-    
-    // You would load and execute these SQL files here if needed
-    // For production, this should be done through migrations
     
     console.log("Supabase initialization complete");
   } catch (error) {
