@@ -2,6 +2,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import Layout from "@/components/Layout";
+import AnimatedWords from "@/components/AnimatedWords";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
@@ -9,8 +10,10 @@ const Index = () => {
 
   return (
     <Layout>
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-4xl text-center space-y-10">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative">
+        <AnimatedWords />
+        
+        <div className="w-full max-w-4xl text-center space-y-10 relative z-10">
           <h1 className="text-5xl md:text-7xl font-bold animate-fade-in">
             Speech Recording System
           </h1>
@@ -34,7 +37,7 @@ const Index = () => {
           </div>
         </div>
         
-        <footer className="absolute bottom-6 text-center w-full opacity-70">
+        <footer className="absolute bottom-6 text-center w-full opacity-70 z-10">
           <p>© 2025 Speech Processing Lab IIIT Hyderabad. All rights reserved.</p>
         </footer>
       </div>

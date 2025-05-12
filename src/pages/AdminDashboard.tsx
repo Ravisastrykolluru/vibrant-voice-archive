@@ -1,27 +1,16 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Settings, Users, HardDrive, Upload, Plus, Download, Folder, Cloud } from "lucide-react";
+import { LogOut, Settings, Users, HardDrive, Download, Trash2, Database } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  getUsers, 
-  getLanguages, 
-  getTotalStorageUsed, 
-  deleteLanguage, 
-  Language, 
-  getGoogleDriveConfig, 
-  getRecordings,
-  downloadAllLanguageRecordings,
-  canBulkDownloadFromGoogleDrive,
-  getStoragePreference
-} from "@/lib/utils/storage";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
+import { supabase } from "@/integrations/supabase/client";
 
 // Color splash component with more dynamic animation
 const ColorSplash = () => {
@@ -54,106 +43,229 @@ const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState<any[]>([]);
-  const [languages, setLanguages] = useState<Language[]>([]);
+  const [languages, setLanguages] = useState<any[]>([]);
   const [storageUsed, setStorageUsed] = useState(0);
-  const [driveConfig, setDriveConfig] = useState<any>(null);
   const [recordingCount, setRecordingCount] = useState(0);
   const [flaggedCount, setFlaggedCount] = useState(0);
-  const [canBulkDownload, setCanBulkDownload] = useState(false);
-  const [storageType, setStorageType] = useState<"local" | "google-drive">("local");
+  const [isExporting, setIsExporting] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
   
   useEffect(() => {
     // Load dashboard data
     loadDashboardData();
     
     // Set up a listener for recording updates
-    window.addEventListener('recording-updated', loadDashboardData);
+    const subscription = supabase
+      .channel('public:recordings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recordings' }, () => {
+        loadDashboardData();
+      })
+      .subscribe();
     
     return () => {
-      window.removeEventListener('recording-updated', loadDashboardData);
+      supabase.removeChannel(subscription);
     };
   }, []);
   
-  const loadDashboardData = () => {
-    const userData = getUsers();
-    setUsers(userData);
-    
-    const languageData = getLanguages();
-    setLanguages(languageData);
-    
-    const storage = getTotalStorageUsed();
-    setStorageUsed(storage);
-    
-    const config = getGoogleDriveConfig();
-    setDriveConfig(config);
-    setCanBulkDownload(canBulkDownloadFromGoogleDrive());
-    
-    // Get storage preference
-    const storagePrefs = getStoragePreference();
-    setStorageType(storagePrefs.type);
-    
-    // Count total recordings
-    const allRecordings = getRecordings();
-    setRecordingCount(allRecordings.length);
-    
-    // Count flagged recordings
-    const flagged = allRecordings.filter(rec => rec.needsRerecording).length;
-    setFlaggedCount(flagged);
-  };
-  
-  const handleAddLanguage = () => {
-    // Will be implemented in AdminLanguageManager
-  };
-  
-  const handleDeleteLanguage = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this language? This action cannot be undone.")) {
-      deleteLanguage(id);
+  const loadDashboardData = async () => {
+    try {
+      // Load users
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*');
+      setUsers(userData || []);
+      
+      // Load languages
+      const { data: languageData } = await supabase
+        .from('languages')
+        .select('*');
+      setLanguages(languageData || []);
+      
+      // Load recordings
+      const { data: recordings } = await supabase
+        .from('recordings')
+        .select('*');
+      setRecordingCount(recordings?.length || 0);
+      
+      // Count flagged recordings
+      const flagged = recordings?.filter(rec => rec.needs_rerecording).length || 0;
+      setFlaggedCount(flagged);
+      
+      // Get storage info
+      const { data: storageData } = await supabase.storage.getBucket('recordings');
+      setStorageUsed(storageData?.size || 0);
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
       toast({
-        title: "Language deleted",
-        description: "The language has been removed from the system"
+        title: "Error loading data",
+        description: "Please try again later",
+        variant: "destructive"
       });
-      loadDashboardData();
     }
   };
   
-  const handleDownloadLanguageRecordings = async (languageId: string) => {
-    const language = languages.find(lang => lang.id === languageId);
-    
-    if (!language) {
+  const handleDeleteLanguage = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this language? This action cannot be undone.")) {
+      try {
+        const { error } = await supabase
+          .from('languages')
+          .delete()
+          .eq('id', id);
+          
+        if (error) throw error;
+        
+        toast({
+          title: "Language deleted",
+          description: "The language has been removed from the system"
+        });
+        loadDashboardData();
+      } catch (error) {
+        console.error("Error deleting language:", error);
+        toast({
+          title: "Error deleting language",
+          description: "Please try again later",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+  
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      // Get all users
+      const { data: users } = await supabase
+        .from('users')
+        .select('*');
+      
+      // Get all recordings metadata
+      const { data: recordings } = await supabase
+        .from('recordings')
+        .select('*');
+      
+      // Get all languages
+      const { data: languages } = await supabase
+        .from('languages')
+        .select('*');
+      
+      // Get all feedback
+      const { data: feedback } = await supabase
+        .from('feedback')
+        .select('*');
+      
+      // Package data
+      const exportData = {
+        users,
+        recordings,
+        languages,
+        feedback,
+        exportDate: new Date().toISOString()
+      };
+      
+      // Create and download JSON file
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `speech-recording-export-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      
       toast({
-        title: "Language not found",
-        description: "Could not find the language to download",
+        title: "Data exported successfully",
+        description: "All data has been exported to a JSON file"
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Export failed",
+        description: "There was an error exporting the data",
         variant: "destructive"
       });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  const handleCleanData = async () => {
+    if (!window.confirm("Are you sure you want to delete all recording data? User accounts will remain intact, but all recordings will be permanently removed. This action cannot be undone.")) {
       return;
     }
     
+    setIsCleaning(true);
     try {
-      toast({ title: `Preparing ${language.name} recordings for download...` });
+      // Delete all recordings from database
+      const { error: dbError } = await supabase
+        .from('recordings')
+        .delete()
+        .lt('id', 'zzzzzzzzz'); // Delete all records
       
-      // Get the recordings and create a downloadable blob
-      const blob = await downloadAllLanguageRecordings(language.name);
+      if (dbError) throw dbError;
       
-      // Create a download link
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${language.name.toLowerCase()}_recordings.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // List all files in storage
+      const { data: files } = await supabase
+        .storage
+        .from('recordings')
+        .list();
+      
+      // Delete files in batches
+      if (files && files.length > 0) {
+        // Flatten the file paths (considering nested folders)
+        const filesToDelete = await getAllStorageFiles('recordings');
+        
+        // Delete files in batches
+        if (filesToDelete.length > 0) {
+          const { error: storageError } = await supabase
+            .storage
+            .from('recordings')
+            .remove(filesToDelete);
+            
+          if (storageError) throw storageError;
+        }
+      }
       
       toast({
-        title: "Download complete",
-        description: `All ${language.name} recordings have been downloaded as ZIP`
+        title: "Data cleaned successfully",
+        description: "All recording data has been removed"
       });
+      
+      loadDashboardData();
     } catch (error) {
+      console.error("Clean data error:", error);
       toast({
-        title: "Download failed",
-        description: "There was an error downloading the recordings",
+        title: "Clean failed",
+        description: "There was an error cleaning the data",
         variant: "destructive"
       });
+    } finally {
+      setIsCleaning(false);
     }
+  };
+  
+  // Helper function to get all files recursively from storage
+  const getAllStorageFiles = async (bucket: string, prefix: string = ''): Promise<string[]> => {
+    let allFiles: string[] = [];
+    
+    // List files in the current path
+    const { data: files } = await supabase.storage.from(bucket).list(prefix);
+    
+    if (files) {
+      // Process files and folders
+      for (const item of files) {
+        const path = prefix ? `${prefix}/${item.name}` : item.name;
+        
+        if (item.id) {
+          // This is a file
+          allFiles.push(path);
+        } else {
+          // This is a folder, recurse
+          const nestedFiles = await getAllStorageFiles(bucket, path);
+          allFiles = [...allFiles, ...nestedFiles];
+        }
+      }
+    }
+    
+    return allFiles;
   };
   
   const handleLogout = () => {
@@ -161,10 +273,15 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Logged out successfully" });
   };
   
-  // Convert bytes to GB for display
+  // Convert bytes to MB for display
   const formatStorageSize = (bytes: number): string => {
-    const gigabytes = bytes / (1024 * 1024 * 1024);
-    return gigabytes.toFixed(2) + " GB";
+    if (bytes === 0) return "0 Bytes";
+    
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
   
   return (
@@ -202,7 +319,7 @@ const AdminDashboard: React.FC = () => {
                     <p className="text-gray-500">Languages</p>
                     <p className="text-3xl font-bold">{languages.length}</p>
                   </div>
-                  <Upload className="h-10 w-10 text-blue-500 opacity-80" />
+                  <Database className="h-10 w-10 text-blue-500 opacity-80" />
                 </div>
               </Card>
               
@@ -225,16 +342,34 @@ const AdminDashboard: React.FC = () => {
                     <p className="text-gray-500">Storage Used</p>
                     <p className="text-3xl font-bold">{formatStorageSize(storageUsed)}</p>
                     <div className="flex items-center text-xs mt-1">
-                      {storageType === "local" ? (
-                        <><Folder size={12} className="mr-1 text-blue-600" /> Local Storage</>
-                      ) : (
-                        <><Cloud size={12} className="mr-1 text-green-600" /> Google Drive</>
-                      )}
+                      <Database size={12} className="mr-1 text-blue-600" /> Supabase Storage
                     </div>
                   </div>
                   <HardDrive className="h-10 w-10 text-orange-500 opacity-80" />
                 </div>
               </Card>
+            </div>
+            
+            {/* Data management buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <Button 
+                onClick={handleExportData} 
+                disabled={isExporting} 
+                className="flex-1 flex items-center justify-center gap-2"
+              >
+                <Download size={18} /> 
+                {isExporting ? "Exporting..." : "Download All Data"}
+              </Button>
+              
+              <Button 
+                onClick={handleCleanData} 
+                variant="destructive" 
+                disabled={isCleaning} 
+                className="flex-1 flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} /> 
+                {isCleaning ? "Cleaning..." : "Clean Recording Data"}
+              </Button>
             </div>
             
             <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="mb-8">
@@ -249,21 +384,6 @@ const AdminDashboard: React.FC = () => {
               </TabsContent>
               
               <TabsContent value="languages" className="mt-6">
-                <div className="mb-4">
-                  {canBulkDownload && (
-                    <div className="bg-green-50 border border-green-200 p-4 rounded-md mb-4">
-                      <p className="text-green-700 flex items-center">
-                        <Download size={18} className="mr-2" />
-                        Bulk downloads available from {storageType === "local" ? "Local Storage" : "Google Drive"}
-                      </p>
-                      {storageType === "google-drive" && driveConfig?.folderName && (
-                        <p className="text-sm text-green-600 mt-1">
-                          All recordings are being backed up to: {driveConfig.folderName}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
                 <AdminLanguageManager 
                   languages={languages}
                   onDelete={handleDeleteLanguage}

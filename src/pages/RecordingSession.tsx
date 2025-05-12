@@ -1,25 +1,23 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Mic, Square, Play, Save, ArrowLeftCircle, ArrowRightCircle, Trophy, AlertCircle } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import AudioWaveform from "@/components/AudioWaveform";
 import CelebrationCard from "@/components/CelebrationCard";
-import { 
-  findUserById, 
-  getLanguages, 
-  saveRecordingMetadata, 
-  saveRecordingBlob, 
+import FeedbackForm from "@/components/FeedbackForm";
+import {
   getUserRecordings,
-  getRerecordingCount 
-} from "@/lib/utils/storage";
+  getLanguages,
+  saveRecordingMetadata,
+  saveRecordingBlob,
+  getRerecordingCount,
+  getUserLanguage
+} from "@/lib/utils/supabase-utils";
 import { 
-  createRecordingPath, 
-  createRecordingFilename, 
   startRecording, 
   stopRecording, 
   playAudio, 
@@ -30,6 +28,8 @@ const RecordingSession: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { userId, languageName } = useParams<{ userId: string; languageName: string }>();
+  const [searchParams] = useSearchParams();
+  const initialMode = searchParams.get('mode') === 'rerecording' ? 'rerecording' : 'regular';
   
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -41,40 +41,12 @@ const RecordingSession: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [rerecordingSentences, setRerecordingSentences] = useState<number[]>([]);
-  const [showConfetti, setShowConfetti] = useState(false);
   const [showThankYouDialog, setShowThankYouDialog] = useState(false);
-  const [recordingMode, setRecordingMode] = useState<'regular' | 'rerecording'>('regular');
-  const [waveformData, setWaveformData] = useState<number[]>([]);
+  const [recordingMode, setRecordingMode] = useState<'regular' | 'rerecording'>(initialMode);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
-  // Listen for re-recording requests from admin
-  useEffect(() => {
-    const handleRerecordingRequest = (event: CustomEvent) => {
-      const { userId: requestUserId, language: requestLanguage, sentenceIndex } = event.detail;
-      
-      if (requestUserId === userId && requestLanguage === languageName) {
-        toast({
-          title: "Re-recording Requested",
-          description: "The admin has flagged a recording for re-recording.",
-          variant: "destructive"
-        });
-        
-        // Add the sentence to the re-recording list if not already there
-        setRerecordingSentences(prev => {
-          if (prev.includes(sentenceIndex)) return prev;
-          return [...prev, sentenceIndex];
-        });
-      }
-    };
-    
-    window.addEventListener('rerecording-requested', handleRerecordingRequest as EventListener);
-    
-    return () => {
-      window.removeEventListener('rerecording-requested', handleRerecordingRequest as EventListener);
-    };
-  }, [userId, languageName, toast]);
   
   useEffect(() => {
     // Load user and language data
@@ -88,74 +60,79 @@ const RecordingSession: React.FC = () => {
       return;
     }
     
-    const userData = findUserById(userId);
-    if (!userData) {
-      toast({
-        title: "User not found",
-        description: "Please register first",
-        variant: "destructive"
-      });
-      navigate("/register");
-      return;
-    }
-    
-    setUser(userData);
-    
-    const languages = getLanguages();
-    const languageData = languages.find(lang => lang.name === languageName);
-    if (!languageData) {
-      toast({
-        title: "Language not found",
-        description: "Please select a valid language",
-        variant: "destructive"
-      });
-      navigate("/login");
-      return;
-    }
-    
-    setLanguage(languageData);
-    
-    // Load existing recordings for this user/language
-    const userRecordings = getUserRecordings(userId);
-    const languageRecordings = userRecordings.filter(rec => rec.language === languageName);
-    
-    // Get the indices of saved recordings
-    const savedIndices = languageRecordings.map(rec => rec.sentenceIndex);
-    setSavedRecordings(savedIndices);
-    
-    // Set re-recording sentences - sentences flagged by admin for re-recording
-    const rerecordingIndices = languageRecordings
-      .filter(rec => rec.needsRerecording)
-      .map(rec => rec.sentenceIndex);
-    setRerecordingSentences(rerecordingIndices);
-    
-    // Determine recording mode
-    const allSentencesRecorded = languageData.sentences.every((_, index) => savedIndices.includes(index));
-    
-    if (allSentencesRecorded && rerecordingIndices.length > 0) {
-      // If all regular sentences done but there are re-recordings, go to re-recording mode
-      setRecordingMode('rerecording');
-      setCurrentSentenceIndex(rerecordingIndices[0]);
-    } else if (allSentencesRecorded && rerecordingIndices.length === 0) {
-      // If everything is done, show thank you dialog
-      setShowThankYouDialog(true);
-    } else {
-      // Otherwise set the starting index - start from where user left off
-      setRecordingMode('regular');
-      
-      if (savedIndices.length > 0) {
-        // Find the first unrecorded sentence
-        let nextIndex = 0;
-        while (savedIndices.includes(nextIndex)) {
-          nextIndex++;
+    const loadData = async () => {
+      try {
+        // Get language data
+        const languages = await getLanguages();
+        const languageData = languages.find((lang: any) => lang.name === languageName);
+        
+        if (!languageData) {
+          toast({
+            title: "Language not found",
+            description: "Please select a valid language",
+            variant: "destructive"
+          });
+          navigate("/login");
+          return;
         }
         
-        // Set to the first unrecorded sentence
-        if (nextIndex < languageData.sentences.length) {
-          setCurrentSentenceIndex(nextIndex);
+        setLanguage(languageData);
+        
+        // Load existing recordings for this user/language
+        const userRecordings = await getUserRecordings(userId);
+        const languageRecordings = userRecordings.filter(rec => rec.language === languageName);
+        
+        // Get the indices of saved recordings
+        const savedIndices = languageRecordings.map(rec => rec.sentence_index);
+        setSavedRecordings(savedIndices);
+        
+        // Set re-recording sentences - sentences flagged by admin for re-recording
+        const rerecordingIndices = languageRecordings
+          .filter(rec => rec.needs_rerecording)
+          .map(rec => rec.sentence_index);
+        setRerecordingSentences(rerecordingIndices);
+        
+        // Determine recording mode
+        const allSentencesRecorded = languageData.sentences.every((_: any, index: number) => savedIndices.includes(index));
+        
+        if (recordingMode === 'rerecording' && rerecordingIndices.length > 0) {
+          // If in re-recording mode, start with the first sentence that needs re-recording
+          setCurrentSentenceIndex(rerecordingIndices[0]);
+        } else if (allSentencesRecorded && rerecordingIndices.length > 0) {
+          // If all regular sentences done but there are re-recordings, go to re-recording mode
+          setRecordingMode('rerecording');
+          setCurrentSentenceIndex(rerecordingIndices[0]);
+        } else if (allSentencesRecorded && rerecordingIndices.length === 0) {
+          // If everything is done, show thank you dialog
+          setShowThankYouDialog(true);
+        } else {
+          // Otherwise set the starting index - start from where user left off
+          setRecordingMode('regular');
+          
+          if (savedIndices.length > 0) {
+            // Find the first unrecorded sentence
+            let nextIndex = 0;
+            while (savedIndices.includes(nextIndex)) {
+              nextIndex++;
+            }
+            
+            // Set to the first unrecorded sentence
+            if (nextIndex < languageData.sentences.length) {
+              setCurrentSentenceIndex(nextIndex);
+            }
+          }
         }
+      } catch (error) {
+        console.error("Error loading data:", error);
+        toast({
+          title: "Error loading session data",
+          description: "Please try again later",
+          variant: "destructive"
+        });
       }
-    }
+    };
+    
+    loadData();
     
     // Check if user has permission to record
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -167,7 +144,7 @@ const RecordingSession: React.FC = () => {
         });
       });
       
-  }, [userId, languageName, navigate, toast]);
+  }, [userId, languageName, navigate, toast, initialMode, recordingMode]);
   
   const handleStartRecording = async () => {
     if (isRecording) return;
@@ -223,7 +200,7 @@ const RecordingSession: React.FC = () => {
   };
   
   const handleSaveRecording = async () => {
-    if (!recordingBlob || !user || !language) return;
+    if (!recordingBlob || !language) return;
     
     setIsSaving(true);
     
@@ -231,24 +208,21 @@ const RecordingSession: React.FC = () => {
       // Calculate SNR value for quality assessment
       const snr = await calculateSNR(recordingBlob);
       
-      // Create file path and name
-      const date = new Date();
-      const filePath = createRecordingPath(date, user.gender, language.name, userId!);
-      const fileName = createRecordingFilename(user.gender, language.name, userId!, currentSentenceIndex);
-      const fullPath = filePath + fileName;
+      // Save the recording to Supabase Storage
+      const filePath = await saveRecordingBlob(
+        recordingBlob, 
+        userId!, 
+        language.name, 
+        currentSentenceIndex
+      );
       
-      // Save the recording blob - this will replace any existing recording with the same path
-      await saveRecordingBlob(recordingBlob, fullPath);
-      
-      // Save metadata - we'll ensure this replaces any existing metadata for this sentence
-      saveRecordingMetadata({
+      // Save metadata
+      await saveRecordingMetadata({
         userId: userId!,
         language: language.name,
         sentenceIndex: currentSentenceIndex,
         sentenceText: language.sentences[currentSentenceIndex],
-        recordingDate: date.toISOString(),
-        filePath: fullPath,
-        needsRerecording: false, // Reset the re-recording flag
+        filePath: filePath,
         snr: snr
       });
       
@@ -264,7 +238,7 @@ const RecordingSession: React.FC = () => {
       
       toast({
         title: "Recording saved",
-        description: "Successfully saved to your recordings and synced to Google Drive",
+        description: "Successfully saved to Supabase"
       });
 
       // Check if all sentences are recorded
@@ -285,7 +259,7 @@ const RecordingSession: React.FC = () => {
     if (!language) return;
 
     // Check if all regular sentences are recorded
-    const allSentencesRecorded = language.sentences.every((_, index) => 
+    const allSentencesRecorded = language.sentences.every((_: any, index: number) => 
       savedRecordings.includes(index)
     );
     
@@ -297,7 +271,6 @@ const RecordingSession: React.FC = () => {
     
     if (allSentencesRecorded && rerecordingSentences.length === 0) {
       // If all sentences recorded and no re-recordings needed, show celebration
-      setShowConfetti(true);
       setShowCompletionDialog(true);
     } else if (allSentencesRecorded && !allRerecordingsDone && recordingMode === 'regular') {
       // Switch to re-recording mode
@@ -392,8 +365,13 @@ const RecordingSession: React.FC = () => {
       description: "Thank you for your contributions!"
     });
   };
+
+  const handleFeedbackComplete = () => {
+    setShowFeedbackForm(false);
+    navigate("/");
+  };
   
-  if (!user || !language) {
+  if (!language) {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
@@ -418,16 +396,26 @@ const RecordingSession: React.FC = () => {
         <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
           <DialogContent className="sm:max-w-md">
             <CelebrationCard
-              title="Congratulations! 🎉"
-              message={`You've completed all recordings for ${language.name}!`}
+              title={`Thank you, ${user?.name || ""}!`}
+              message="You've completed all recordings! Thank you for helping us build a better speech system."
             >
               <Button onClick={() => {
                 setShowCompletionDialog(false);
-                navigate('/');
+                setShowFeedbackForm(true);
               }} className="mt-4">
-                Return to Home
+                Continue
               </Button>
             </CelebrationCard>
+          </DialogContent>
+        </Dialog>
+
+        {/* Feedback form dialog */}
+        <Dialog open={showFeedbackForm} onOpenChange={setShowFeedbackForm}>
+          <DialogContent className="sm:max-w-md">
+            <FeedbackForm 
+              userId={userId || ""} 
+              onComplete={handleFeedbackComplete} 
+            />
           </DialogContent>
         </Dialog>
         
@@ -435,26 +423,15 @@ const RecordingSession: React.FC = () => {
         <Dialog open={showThankYouDialog} onOpenChange={setShowThankYouDialog}>
           <DialogContent className="sm:max-w-md">
             <CelebrationCard
-              title="Thank You! 🙏"
+              title={`Thank you, ${user?.name || ""}!`}
               message={`You've already completed all recordings for ${language.name}!`}
             >
-              <DialogFooter className="flex flex-col sm:flex-row sm:justify-center w-full gap-2">
-                <Button onClick={() => {
-                  setShowThankYouDialog(false);
-                  navigate('/');
-                }} className="flex-1">
-                  Return to Home
-                </Button>
-                <Button 
-                  onClick={() => {
-                    setShowThankYouDialog(false);
-                  }} 
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Continue Browsing
-                </Button>
-              </DialogFooter>
+              <Button onClick={() => {
+                setShowThankYouDialog(false);
+                navigate('/');
+              }} className="mt-4">
+                Return to Home
+              </Button>
             </CelebrationCard>
           </DialogContent>
         </Dialog>
@@ -480,8 +457,8 @@ const RecordingSession: React.FC = () => {
             
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="font-medium">{user.name}</p>
-                <p className="text-sm text-gray-500">ID: {userId}</p>
+                <p className="font-medium">{user?.name}</p>
+                <p className="text-sm text-gray-500">Language: {language.name}</p>
               </div>
               <Button variant="outline" onClick={handleExitSession}>
                 Exit Session
@@ -508,8 +485,6 @@ const RecordingSession: React.FC = () => {
                   <div className="bg-gray-50 rounded-lg p-6 min-h-[200px] flex items-center justify-center text-center text-xl">
                     {language.sentences[currentSentenceIndex]}
                   </div>
-                  
-                  {/* Waveform display removed as requested */}
                   
                   <div className="flex justify-between mt-4">
                     <Button 
@@ -557,47 +532,62 @@ const RecordingSession: React.FC = () => {
                   
                   <div className="flex flex-col items-center gap-4">
                     {!isRecording && !recordingBlob && (
-                      <Button 
-                        className="record-button bg-black text-white h-16 w-16 rounded-full"
-                        onClick={handleStartRecording}
-                      >
-                        <Mic size={24} />
-                      </Button>
-                    )}
-                    
-                    {isRecording && (
-                      <Button 
-                        className="record-button bg-red-500 text-white h-16 w-16 rounded-full"
-                        onClick={handleStopRecording}
-                      >
-                        <Square size={24} />
-                      </Button>
-                    )}
-                    
-                    {recordingBlob && !isRecording && (
-                      <>
+                      <div className="text-center">
                         <Button 
-                          className="record-button bg-black text-white"
-                          onClick={handlePlayRecording}
-                          disabled={isPlaying}
-                        >
-                          <Play size={24} />
-                        </Button>
-                        
-                        <Button 
-                          className="record-button bg-black text-white"
+                          className="record-button bg-black text-white h-16 w-16 rounded-full mb-2"
                           onClick={handleStartRecording}
                         >
                           <Mic size={24} />
                         </Button>
-                        
+                        <p className="text-xs text-gray-600">Record</p>
+                      </div>
+                    )}
+                    
+                    {isRecording && (
+                      <div className="text-center">
                         <Button 
-                          className="record-button bg-green-600 text-white"
-                          onClick={handleSaveRecording}
-                          disabled={isSaving}
+                          className="record-button bg-red-500 text-white h-16 w-16 rounded-full mb-2"
+                          onClick={handleStopRecording}
                         >
-                          <Save size={24} />
+                          <Square size={24} />
                         </Button>
+                        <p className="text-xs text-gray-600">Stop</p>
+                      </div>
+                    )}
+                    
+                    {recordingBlob && !isRecording && (
+                      <>
+                        <div className="text-center">
+                          <Button 
+                            className="record-button bg-black text-white h-16 w-16 rounded-full mb-2"
+                            onClick={handlePlayRecording}
+                            disabled={isPlaying}
+                          >
+                            <Play size={24} />
+                          </Button>
+                          <p className="text-xs text-gray-600">Play</p>
+                        </div>
+                        
+                        <div className="text-center">
+                          <Button 
+                            className="record-button bg-black text-white h-16 w-16 rounded-full mb-2"
+                            onClick={handleStartRecording}
+                          >
+                            <Mic size={24} />
+                          </Button>
+                          <p className="text-xs text-gray-600">Re-record</p>
+                        </div>
+                        
+                        <div className="text-center">
+                          <Button 
+                            className="record-button bg-green-600 text-white h-16 w-16 rounded-full mb-2"
+                            onClick={handleSaveRecording}
+                            disabled={isSaving}
+                          >
+                            <Save size={24} />
+                          </Button>
+                          <p className="text-xs text-gray-600">Save</p>
+                        </div>
                       </>
                     )}
                   </div>

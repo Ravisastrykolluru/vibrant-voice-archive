@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import Layout from "@/components/Layout";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getLanguages, generateUserId, saveUser, UserData } from "@/lib/utils/storage";
+import { getLanguages, saveUser } from "@/lib/utils/supabase-utils";
 
 const Register: React.FC = () => {
   const { toast } = useToast();
@@ -21,8 +21,17 @@ const Register: React.FC = () => {
     contactNumber: "",
     language: ""
   });
-  const languages = getLanguages();
+  const [languages, setLanguages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const loadLanguages = async () => {
+      const langs = await getLanguages();
+      setLanguages(langs);
+    };
+    
+    loadLanguages();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -37,12 +46,9 @@ const Register: React.FC = () => {
     setFormData(prev => ({ ...prev, language }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Generate a unique 4-digit ID
-    const userId = generateUserId();
     
     // Validate form data
     if (!formData.name || !formData.age || !formData.gender || !formData.contactNumber || !formData.language) {
@@ -54,30 +60,41 @@ const Register: React.FC = () => {
       return;
     }
     
-    // Create new user
-    const newUser: UserData = {
-      id: userId,
-      name: formData.name,
-      age: parseInt(formData.age),
-      gender: formData.gender,
-      contactNumber: formData.contactNumber,
-      createdAt: new Date().toISOString()
-    };
-    
-    // Save user to storage
-    saveUser(newUser);
-    
-    // Show success message with the user ID
-    toast({
-      title: "Registration Successful",
-      description: `Your user ID is ${userId}. Please save this for future login.`
-    });
-    
-    // Navigate to recording page
-    setTimeout(() => {
-      navigate(`/record/${userId}/${formData.language}`);
+    try {
+      // Save user to Supabase
+      const result = await saveUser({
+        name: formData.name,
+        age: parseInt(formData.age),
+        gender: formData.gender,
+        contactNumber: formData.contactNumber,
+        language: formData.language
+      });
+      
+      if (!result) {
+        throw new Error("Failed to create user");
+      }
+      
+      // Show success message with the user ID and unique code
+      toast({
+        title: "Registration Successful",
+        description: `Your unique code is ${result.uniqueCode}. Please save this for future login.`
+      });
+      
+      // Navigate to recording page
+      setTimeout(() => {
+        navigate(`/record/${result.userId}/${formData.language}`);
+        setIsLoading(false);
+      }, 1500);
+      
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Registration Failed",
+        description: "There was an error creating your account. Please try again.",
+        variant: "destructive"
+      });
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (

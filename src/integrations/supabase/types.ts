@@ -42,6 +42,30 @@ export type Database = {
         }
         Relationships: []
       }
+      feedback: {
+        Row: {
+          comments: string | null
+          created_at: string
+          id: string
+          rating: number
+          user_id: string
+        }
+        Insert: {
+          comments?: string | null
+          created_at?: string
+          id?: string
+          rating: number
+          user_id: string
+        }
+        Update: {
+          comments?: string | null
+          created_at?: string
+          id?: string
+          rating?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       languages: {
         Row: {
           id: string
@@ -107,6 +131,27 @@ export type Database = {
           },
         ]
       }
+      user_languages: {
+        Row: {
+          created_at: string
+          id: string
+          language: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          language: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          language?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           age: number
@@ -115,6 +160,7 @@ export type Database = {
           gender: string
           id: string
           name: string
+          unique_code: string | null
           user_id: string
         }
         Insert: {
@@ -124,6 +170,7 @@ export type Database = {
           gender: string
           id?: string
           name: string
+          unique_code?: string | null
           user_id: string
         }
         Update: {
@@ -133,6 +180,7 @@ export type Database = {
           gender?: string
           id?: string
           name?: string
+          unique_code?: string | null
           user_id?: string
         }
         Relationships: []
