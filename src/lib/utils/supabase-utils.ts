@@ -1,6 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
-import { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword } from "./rpc-utils";
+import { 
+  getUserNotifications, 
+  markNotificationAsRead, 
+  addNotification, 
+  updateUserPassword, 
+  authenticateUser,
+  registerUserAuth,
+  sendRerecordingNotification
+} from "./rpc-utils";
 
 // Define an extended user type to accommodate additional properties
 interface ExtendedUser {
@@ -17,7 +25,15 @@ interface ExtendedUser {
 }
 
 // Re-export notification and user password functions
-export { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword };
+export { 
+  getUserNotifications, 
+  markNotificationAsRead, 
+  addNotification, 
+  updateUserPassword, 
+  authenticateUser,
+  registerUserAuth,
+  sendRerecordingNotification 
+};
 
 // Generate a unique 5-digit alphanumeric code
 export const generateUniqueCode = async (): Promise<string> => {
@@ -71,6 +87,13 @@ export const saveUser = async (userData: {
     console.error('Error saving user:', userError);
     return null;
   }
+  
+  // Also register the user with Supabase Auth
+  await registerUserAuth({
+    mobileNumber: userData.contactNumber,
+    userId: userId,
+    name: userData.name
+  });
   
   // Save user language
   const { error: langError } = await supabase.from('user_languages').insert({
@@ -186,12 +209,31 @@ export const saveRecordingMetadata = async (metadata: {
 };
 
 export const markForRerecording = async (userId: string, language: string, sentenceIndex: number): Promise<void> => {
-  await supabase
-    .from('recordings')
-    .update({ needs_rerecording: true })
-    .eq('user_id', userId)
-    .eq('language', language)
-    .eq('sentence_index', sentenceIndex);
+  try {
+    // Get the sentence text first
+    const { data: recordingData } = await supabase
+      .from('recordings')
+      .select('sentence_text')
+      .eq('user_id', userId)
+      .eq('language', language)
+      .eq('sentence_index', sentenceIndex)
+      .single();
+    
+    // Mark the recording for rerecording  
+    await supabase
+      .from('recordings')
+      .update({ needs_rerecording: true })
+      .eq('user_id', userId)
+      .eq('language', language)
+      .eq('sentence_index', sentenceIndex);
+    
+    // Send notification to user
+    if (recordingData && recordingData.sentence_text) {
+      await sendRerecordingNotification(userId, recordingData.sentence_text);
+    }
+  } catch (error) {
+    console.error("Error marking for rerecording:", error);
+  }
 };
 
 export const getRerecordingCount = async (userId: string, language: string): Promise<number> => {

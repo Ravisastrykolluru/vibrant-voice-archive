@@ -13,7 +13,8 @@ import {
   getUserLanguage, 
   getRerecordingCount, 
   getUserNotifications,
-  markNotificationAsRead
+  markNotificationAsRead,
+  authenticateUser
 } from "@/lib/utils/supabase-utils";
 import {
   Dialog,
@@ -56,6 +57,19 @@ const Login: React.FC = () => {
         toast({
           title: "User not found",
           description: "Please check your name and unique code or register as a new user",
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
+      
+      // Authenticate user with Supabase Auth
+      const authResult = await authenticateUser(foundUser.contact_number, foundUser.user_id);
+      
+      if (!authResult.success) {
+        toast({
+          title: "Authentication failed",
+          description: "Login credentials are invalid. Please contact support.",
           variant: "destructive"
         });
         setIsLoading(false);

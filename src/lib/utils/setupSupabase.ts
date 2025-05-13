@@ -1,45 +1,56 @@
 
 import { supabase } from "@/integrations/supabase/client";
 
-export const initializeSupabase = async (): Promise<void> => {
+// Initialize Supabase resources (buckets, functions, etc.)
+export const initializeSupabase = async () => {
   try {
-    // Check if storage bucket exists and create if not
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const recordingsBucketExists = buckets?.some(bucket => bucket.name === 'recordings');
-    
-    if (!recordingsBucketExists) {
-      // Create the recordings bucket if it doesn't exist
-      await supabase.storage.createBucket('recordings', { public: false });
-      console.log("Created recordings bucket");
-      
-      // Set up bucket policies
-      try {
-        const { error } = await supabase.storage.from('recordings').upload('test.txt', new Blob(['test']), {
-          cacheControl: '3600',
-          upsert: true
+    // Step 1: Create storage buckets if they don't exist
+    try {
+      // Create recordings bucket
+      const { data: bucketData, error: bucketError } = await supabase
+        .storage
+        .createBucket('recordings', {
+          public: false,
+          fileSizeLimit: 5242880, // 5MB
+          allowedMimeTypes: ['audio/wav', 'audio/wave', 'audio/x-wav']
         });
-        if (error) {
-          console.error("Error setting up storage bucket:", error);
+      
+      if (bucketError) {
+        if (bucketError.message.includes('already exists')) {
+          console.log("Recordings bucket already exists");
         } else {
-          // Delete the test file
-          await supabase.storage.from('recordings').remove(['test.txt']);
+          console.error("Error creating recordings bucket:", bucketError);
         }
-      } catch (storageError) {
-        console.error("Error testing storage bucket:", storageError);
+      } else {
+        console.log("Created recordings bucket");
       }
+      
+      // Create rerecordings bucket
+      const { error: rerecordingBucketError } = await supabase
+        .storage
+        .createBucket('rerecordings', {
+          public: false,
+          fileSizeLimit: 5242880, // 5MB
+          allowedMimeTypes: ['audio/wav', 'audio/wave', 'audio/x-wav']
+        });
+        
+      if (rerecordingBucketError) {
+        if (rerecordingBucketError.message.includes('already exists')) {
+          console.log("Rerecordings bucket already exists");
+        } else {
+          console.error("Error creating rerecordings bucket:", rerecordingBucketError);
+        }
+      } else {
+        console.log("Created rerecordings bucket");
+      }
+    } catch (storageError) {
+      console.error("Error setting up storage:", storageError);
     }
     
-    // Create a rerecordings bucket if it doesn't exist
-    const rerecordingsBucketExists = buckets?.some(bucket => bucket.name === 'rerecordings');
-    if (!rerecordingsBucketExists) {
-      await supabase.storage.createBucket('rerecordings', { public: false });
-      console.log("Created rerecordings bucket");
-    }
-    
-    // Create custom RPC functions
+    // Step 2: Create custom RPC functions
     try {
       // Create notification functions
-      const { error: notificationError } = await supabase.rpc('create_notification_function');
+      const { error: notificationError } = await supabase.rpc('create_notification_function' as any);
       if (notificationError) {
         console.error("Error creating notification functions:", notificationError);
       } else {
@@ -47,7 +58,7 @@ export const initializeSupabase = async (): Promise<void> => {
       }
       
       // Create user password update function
-      const { error: passwordError } = await supabase.rpc('create_password_update_function');
+      const { error: passwordError } = await supabase.rpc('create_password_update_function' as any);
       if (passwordError) {
         console.error("Error creating password update functions:", passwordError);
       } else {
@@ -58,7 +69,50 @@ export const initializeSupabase = async (): Promise<void> => {
     }
     
     console.log("Supabase initialization complete");
+    
   } catch (error) {
     console.error("Error initializing Supabase:", error);
+  }
+};
+
+// Sync a user's Supabase Auth credentials
+export const syncUserAuthCredentials = async (userData: {
+  mobileNumber: string, 
+  userId: string,
+  name: string
+}): Promise<boolean> => {
+  try {
+    const email = `${userData.mobileNumber}@spl.com`;
+    const password = `${userData.userId}@spl`;
+    
+    // Check if user exists in auth
+    const { data: userExists } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    // If user doesn't exist, create them
+    if (!userExists.user) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: userData.name,
+            user_id: userData.userId
+          }
+        }
+      });
+      
+      if (error) {
+        console.error("Error creating auth user:", error);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error syncing user credentials:", error);
+    return false;
   }
 };
