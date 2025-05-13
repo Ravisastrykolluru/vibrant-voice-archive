@@ -2,6 +2,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword } from "./rpc-utils";
 
+// Define an extended user type to accommodate additional properties
+interface ExtendedUser {
+  age: number;
+  contact_number: string;
+  created_at: string;
+  gender: string;
+  id: string;
+  name: string;
+  password: string | null;
+  unique_code: string | null;
+  user_id: string;
+  languagePreference?: string; // Add this property to the type
+}
+
 // Re-export notification and user password functions
 export { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword };
 
@@ -320,7 +334,7 @@ export const exportAllData = async (): Promise<any> => {
 };
 
 // Get all users for display in admin panel
-export const getAllUsers = async (): Promise<any[]> => {
+export const getAllUsers = async (): Promise<ExtendedUser[]> => {
   const { data: users, error } = await supabase
     .from('users')
     .select('*')
@@ -332,7 +346,7 @@ export const getAllUsers = async (): Promise<any[]> => {
   }
   
   // For each user, get their language
-  for (const user of users) {
+  for (const user of users as ExtendedUser[]) {
     const { data: langData } = await supabase
       .from('user_languages')
       .select('language')
@@ -340,11 +354,11 @@ export const getAllUsers = async (): Promise<any[]> => {
       .single();
       
     if (langData) {
-      user.languagePreference = langData.language; // Use a different property name to avoid TypeScript error
+      user.languagePreference = langData.language; // Now TypeScript knows this property exists
     }
   }
   
-  return users;
+  return users as ExtendedUser[];
 };
 
 // Delete user recordings

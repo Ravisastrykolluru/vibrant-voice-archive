@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
+import { supabase } from "@/integrations/supabase/client"; // Add this import
 import { 
   getAllUsers,
   deleteUserRecordings
