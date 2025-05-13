@@ -13,8 +13,6 @@ export const initializeSupabase = async (): Promise<void> => {
       console.log("Created recordings bucket");
       
       // Set up bucket policies
-      // This would typically be done through SQL migrations
-      // but we're doing it here for simplicity
       try {
         const { error } = await supabase.storage.from('recordings').upload('test.txt', new Blob(['test']), {
           cacheControl: '3600',
@@ -31,15 +29,22 @@ export const initializeSupabase = async (): Promise<void> => {
       }
     }
     
-    // Create custom RPC functions for notifications and user password updates
+    // Create a rerecordings bucket if it doesn't exist
+    const rerecordingsBucketExists = buckets?.some(bucket => bucket.name === 'rerecordings');
+    if (!rerecordingsBucketExists) {
+      await supabase.storage.createBucket('rerecordings', { public: false });
+      console.log("Created rerecordings bucket");
+    }
+    
+    // Create custom RPC functions
     try {
-      // Create add_notification function
-      await supabase.rpc('create_notification_function', {});
-      console.log("Created add_notification function");
+      // Create notification functions
+      await supabase.rpc('create_notification_function');
+      console.log("Created notification functions");
       
-      // Create update_user_password function
-      await supabase.rpc('create_password_update_function', {});
-      console.log("Created update_user_password function");
+      // Create user password update function
+      await supabase.rpc('create_password_update_function');
+      console.log("Created password update functions");
     } catch (rpcError) {
       console.error("Error creating RPC functions:", rpcError);
     }

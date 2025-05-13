@@ -65,19 +65,12 @@ const Login: React.FC = () => {
       // Get user's language
       const language = await getUserLanguage(foundUser.user_id);
       
-      if (!language) {
-        toast({
-          title: "No language assigned",
-          description: "Please contact the administrator",
-          variant: "destructive"
-        });
-        setIsLoading(false);
-        return;
+      // Get re-recording count (if language is available)
+      let count = 0;
+      if (language) {
+        count = await getRerecordingCount(foundUser.user_id, language);
+        setRerecordingCount(count);
       }
-      
-      // Get re-recording count
-      const count = await getRerecordingCount(foundUser.user_id, language);
-      setRerecordingCount(count);
       
       // Get user notifications
       const userNotifications = await getUserNotifications(foundUser.user_id);
@@ -109,9 +102,20 @@ const Login: React.FC = () => {
   };
 
   const handleContinueRecording = () => {
-    if (!user || !user.language) return;
+    if (!user) return;
     
-    navigate(`/record/${user.user_id}/${user.language}`);
+    if (user.language) {
+      navigate(`/record/${user.user_id}/${user.language}`);
+    } else {
+      // If the user doesn't have a language assigned, redirect to main page
+      // and let them know they need to select a language
+      toast({
+        title: "No language assigned",
+        description: "Please contact the administrator to assign a language",
+        variant: "destructive"
+      });
+      navigate("/");
+    }
   };
 
   const handleRerecordSentences = () => {
@@ -198,9 +202,11 @@ const Login: React.FC = () => {
                     </Button>
                   )}
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Language: {user.language}</p>
-                <p className="text-sm text-gray-600">ID: {user.user_id}</p>
+                <p className="text-sm text-gray-600 mt-1">ID: {user.user_id}</p>
                 <p className="text-sm text-gray-600">Code: {user.unique_code}</p>
+                {user.language && (
+                  <p className="text-sm text-gray-600">Language: {user.language}</p>
+                )}
                 
                 {rerecordingCount > 0 && (
                   <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">

@@ -1,5 +1,10 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
+import { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword } from "./rpc-utils";
+
+// Re-export notification and user password functions
+export { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword };
 
 // Generate a unique 5-digit alphanumeric code
 export const generateUniqueCode = async (): Promise<string> => {
@@ -192,31 +197,43 @@ export const getRerecordingCount = async (userId: string, language: string): Pro
 };
 
 // File Storage Functions
-export const saveRecordingBlob = async (blob: Blob, userId: string, language: string, sentenceIndex: number): Promise<string> => {
+export const saveRecordingBlob = async (
+  blob: Blob, 
+  userId: string, 
+  language: string, 
+  sentenceIndex: number,
+  isRerecording: boolean = false
+): Promise<string> => {
   // Create date-based folder structure
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const fileName = `${today}/${userId}/${language}/${sentenceIndex}.wav`;
+  const { data: userData } = await supabase.from('users').select('gender').eq('user_id', userId).single();
+  const gender = userData?.gender || 'unknown';
+  
+  const bucket = isRerecording ? 'rerecordings' : 'recordings';
+  const fileName = `${today}/${gender}_${language}_${userId}/${sentenceIndex}.wav`;
   
   const { data, error } = await supabase
     .storage
-    .from('recordings')
+    .from(bucket)
     .upload(fileName, blob, {
       cacheControl: '3600',
       upsert: true
     });
     
   if (error) {
-    console.error('Error uploading recording:', error);
-    throw new Error('Failed to upload recording');
+    console.error(`Error uploading ${isRerecording ? 're-recording' : 'recording'}:`, error);
+    throw new Error(`Failed to upload ${isRerecording ? 're-recording' : 'recording'}`);
   }
   
   return data.path;
 };
 
-export const getRecordingBlob = async (filePath: string): Promise<Blob | null> => {
+export const getRecordingBlob = async (filePath: string, isRerecording: boolean = false): Promise<Blob | null> => {
+  const bucket = isRerecording ? 'rerecordings' : 'recordings';
+  
   const { data, error } = await supabase
     .storage
-    .from('recordings')
+    .from(bucket)
     .download(filePath);
     
   if (error || !data) {
@@ -250,20 +267,29 @@ export const getAdminPassword = async (): Promise<string> => {
   return data.password;
 };
 
-export const setAdminPassword = async (password: string): Promise<void> => {
-  const { data } = await supabase
-    .from('admin_settings')
-    .select('id');
-    
-  if (data && data.length > 0) {
-    await supabase
+export const setAdminPassword = async (password: string): Promise<boolean> => {
+  try {
+    const { data } = await supabase
       .from('admin_settings')
-      .update({ password })
-      .eq('id', data[0].id);
-  } else {
-    await supabase
-      .from('admin_settings')
-      .insert({ id: 'admin', password });
+      .select('id');
+      
+    if (data && data.length > 0) {
+      const { error } = await supabase
+        .from('admin_settings')
+        .update({ password })
+        .eq('id', data[0].id);
+        
+      return !error;
+    } else {
+      const { error } = await supabase
+        .from('admin_settings')
+        .insert({ id: 'admin', password });
+        
+      return !error;
+    }
+  } catch (error) {
+    console.error("Error setting admin password:", error);
+    return false;
   }
 };
 
@@ -294,42 +320,102 @@ export const exportAllData = async (): Promise<any> => {
   };
 };
 
-export const cleanRecordingData = async (): Promise<void> => {
-  // Delete all recordings from the database
-  await supabase
-    .from('recordings')
-    .delete()
-    .neq('user_id', '');  // Just to ensure we delete all
+// Get all users for display in admin panel
+export const getAllUsers = async (): Promise<any[]> => {
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false });
     
-  // Clear storage too
-  // This is a simplified approach; in reality we'd want to list and delete all files
-  // but that would require iterating through storage which is more complex
-};
-
-// Get notifications for a user
-export const getUserNotifications = async (userId: string): Promise<any[]> => {
-  try {
-    // Use RPC function to get notifications
-    const { data, error } = await supabase.rpc('get_user_notifications', { p_user_id: userId });
-    
-    if (error || !data) {
-      console.error("Error getting notifications:", error);
-      return [];
-    }
-    
-    return data;
-  } catch (error) {
-    console.error("Error in getUserNotifications:", error);
+  if (error || !users) {
+    console.error("Error fetching users:", error);
     return [];
   }
+  
+  // For each user, get their language
+  for (const user of users) {
+    const { data: langData } = await supabase
+      .from('user_languages')
+      .select('language')
+      .eq('user_id', user.user_id)
+      .single();
+      
+    if (langData) {
+      user.language = langData.language;
+    }
+  }
+  
+  return users;
 };
 
-// Mark notification as read
-export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+// Delete user recordings
+export const deleteUserRecordings = async (userId: string): Promise<boolean> => {
   try {
-    // Use RPC function to mark notification as read
-    await supabase.rpc('mark_notification_read', { p_notification_id: notificationId });
+    // 1. Get all recordings for this user
+    const { data: recordings } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('user_id', userId);
+      
+    if (!recordings || recordings.length === 0) {
+      return true; // No recordings to delete
+    }
+    
+    // 2. Delete recordings from database
+    const { error: dbError } = await supabase
+      .from('recordings')
+      .delete()
+      .eq('user_id', userId);
+      
+    if (dbError) throw dbError;
+    
+    // 3. Delete recordings from storage
+    // Get unique dates from recordings
+    const recordingDates = [...new Set(recordings.map(rec => 
+      new Date(rec.recording_date).toISOString().split('T')[0]
+    ))];
+    
+    // Get user gender
+    const { data: userData } = await supabase
+      .from('users')
+      .select('gender')
+      .eq('user_id', userId)
+      .single();
+      
+    const gender = userData?.gender || 'unknown';
+    const language = recordings[0]?.language || '';
+    
+    // Delete each date folder for this user's recordings
+    for (const date of recordingDates) {
+      const folderPath = `${date}/${gender}_${language}_${userId}`;
+      
+      // List all files in this folder
+      const { data: files } = await supabase.storage
+        .from('recordings')
+        .list(folderPath);
+        
+      if (files && files.length > 0) {
+        // Delete all files in the folder
+        const filePaths = files.map(file => `${folderPath}/${file.name}`);
+        await supabase.storage
+          .from('recordings')
+          .remove(filePaths);
+      }
+      
+      // Try to remove the folder itself (this may not work depending on storage provider)
+      try {
+        await supabase.storage
+          .from('recordings')
+          .remove([folderPath]);
+      } catch (e) {
+        // Ignore folder deletion errors
+        console.log("Could not delete folder, this is normal for some storage providers");
+      }
+    }
+    
+    return true;
   } catch (error) {
-    console.error("Error marking notification as read:", error);
+    console.error("Error deleting user recordings:", error);
+    return false;
   }
 };

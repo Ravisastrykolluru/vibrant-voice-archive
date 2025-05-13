@@ -10,7 +10,19 @@ import { useToast } from "@/hooks/use-toast";
 import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
-import { supabase } from "@/integrations/supabase/client";
+import { 
+  supabase,
+  getAllUsers,
+  deleteUserRecordings
+} from "@/lib/utils/supabase-utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription
+} from "@/components/ui/dialog";
 
 // Color splash component with more dynamic animation
 const ColorSplash = () => {
@@ -48,7 +60,9 @@ const AdminDashboard: React.FC = () => {
   const [recordingCount, setRecordingCount] = useState(0);
   const [flaggedCount, setFlaggedCount] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
-  const [isCleaning, setIsCleaning] = useState(false);
+  const [showUserCleanDialog, setShowUserCleanDialog] = useState(false);
+  const [selectedUserForClean, setSelectedUserForClean] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   useEffect(() => {
     // Load dashboard data
@@ -70,9 +84,7 @@ const AdminDashboard: React.FC = () => {
   const loadDashboardData = async () => {
     try {
       // Load users
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*');
+      const userData = await getAllUsers();
       setUsers(userData || []);
       
       // Load languages
@@ -198,85 +210,51 @@ const AdminDashboard: React.FC = () => {
     }
   };
   
-  const handleCleanData = async () => {
-    if (!window.confirm("Are you sure you want to delete all recording data? User accounts will remain intact, but all recordings will be permanently removed. This action cannot be undone.")) {
+  const handleOpenCleanDialog = () => {
+    setShowUserCleanDialog(true);
+    setSelectedUserForClean(null);
+  };
+  
+  const handleSelectUserForClean = (userId: string) => {
+    setSelectedUserForClean(userId);
+  };
+  
+  const handleConfirmClean = async () => {
+    if (!selectedUserForClean) {
+      toast({
+        title: "No user selected",
+        description: "Please select a user whose recordings you want to delete",
+        variant: "destructive"
+      });
       return;
     }
     
-    setIsCleaning(true);
+    setIsDeleting(true);
     try {
-      // Delete all recordings from database
-      const { error: dbError } = await supabase
-        .from('recordings')
-        .delete()
-        .lt('id', 'zzzzzzzzz'); // Delete all records
+      const success = await deleteUserRecordings(selectedUserForClean);
       
-      if (dbError) throw dbError;
-      
-      // List all files in storage
-      const { data: files } = await supabase
-        .storage
-        .from('recordings')
-        .list();
-      
-      // Delete files in batches
-      if (files && files.length > 0) {
-        // Flatten the file paths (considering nested folders)
-        const filesToDelete = await getAllStorageFiles('recordings');
+      if (success) {
+        toast({
+          title: "Recordings deleted",
+          description: "All recordings for the selected user have been deleted"
+        });
         
-        // Delete files in batches
-        if (filesToDelete.length > 0) {
-          const { error: storageError } = await supabase
-            .storage
-            .from('recordings')
-            .remove(filesToDelete);
-            
-          if (storageError) throw storageError;
-        }
+        loadDashboardData();
+        setShowUserCleanDialog(false);
+        setSelectedUserForClean(null);
+      } else {
+        throw new Error("Failed to delete recordings");
       }
-      
-      toast({
-        title: "Data cleaned successfully",
-        description: "All recording data has been removed"
-      });
-      
-      loadDashboardData();
     } catch (error) {
       console.error("Clean data error:", error);
       toast({
-        title: "Clean failed",
-        description: "There was an error cleaning the data",
+        title: "Delete failed",
+        description: "There was an error deleting the recordings",
         variant: "destructive"
       });
     } finally {
-      setIsCleaning(false);
+      setIsDeleting(false);
     }
-  };
-  
-  // Helper function to get all files recursively from storage
-  const getAllStorageFiles = async (bucket: string, prefix: string = ''): Promise<string[]> => {
-    let allFiles: string[] = [];
-    
-    // List files in the current path
-    const { data: files } = await supabase.storage.from(bucket).list(prefix);
-    
-    if (files) {
-      // Process files and folders
-      for (const item of files) {
-        const path = prefix ? `${prefix}/${item.name}` : item.name;
-        
-        if (item.id) {
-          // This is a file
-          allFiles.push(path);
-        } else {
-          // This is a folder, recurse
-          const nestedFiles = await getAllStorageFiles(bucket, path);
-          allFiles = [...allFiles, ...nestedFiles];
-        }
-      }
-    }
-    
-    return allFiles;
   };
   
   const handleLogout = () => {
@@ -373,13 +351,12 @@ const AdminDashboard: React.FC = () => {
               </Button>
               
               <Button 
-                onClick={handleCleanData} 
-                variant="destructive" 
-                disabled={isCleaning} 
+                onClick={handleOpenCleanDialog} 
+                variant="outline" 
                 className="flex-1 flex items-center justify-center gap-2"
               >
                 <Trash2 size={18} /> 
-                {isCleaning ? "Cleaning..." : "Clean Recording Data"}
+                Clean Recording Data
               </Button>
             </div>
             
@@ -409,6 +386,60 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* User Clean Dialog */}
+      <Dialog open={showUserCleanDialog} onOpenChange={setShowUserCleanDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clean User Recordings</DialogTitle>
+            <DialogDescription>
+              Select a user whose recording data you want to delete. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="my-6 max-h-80 overflow-y-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2">Name</th>
+                  <th className="text-left py-2">Code</th>
+                  <th className="text-right py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(user => (
+                  <tr key={user.user_id} className="border-b">
+                    <td className="py-2">{user.name}</td>
+                    <td className="py-2">{user.unique_code}</td>
+                    <td className="py-2 text-right">
+                      <Button
+                        variant={selectedUserForClean === user.user_id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleSelectUserForClean(user.user_id)}
+                      >
+                        {selectedUserForClean === user.user_id ? "Selected" : "Select"}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUserCleanDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleConfirmClean}
+              disabled={isDeleting || !selectedUserForClean}
+            >
+              {isDeleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };
