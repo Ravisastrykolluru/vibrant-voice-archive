@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Settings, Users, HardDrive, Download, Trash2, Database } from "lucide-react";
@@ -11,7 +10,6 @@ import AdminUserList from "@/components/admin/AdminUserList";
 import AdminLanguageManager from "@/components/admin/AdminLanguageManager";
 import AdminSettings from "@/components/admin/AdminSettings";
 import { 
-  supabase,
   getAllUsers,
   deleteUserRecordings
 } from "@/lib/utils/supabase-utils";

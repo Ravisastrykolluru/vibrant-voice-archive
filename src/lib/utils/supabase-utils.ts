@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { getUserNotifications, markNotificationAsRead, addNotification, updateUserPassword } from "./rpc-utils";
@@ -341,7 +340,7 @@ export const getAllUsers = async (): Promise<any[]> => {
       .single();
       
     if (langData) {
-      user.language = langData.language;
+      user.languagePreference = langData.language; // Use a different property name to avoid TypeScript error
     }
   }
   
