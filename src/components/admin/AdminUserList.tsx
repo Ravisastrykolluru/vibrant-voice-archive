@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getUserRecordings } from "@/lib/utils/storage";
 import AdminUserDetails from "./AdminUserDetails";
 
 interface AdminUserListProps {
@@ -48,7 +47,6 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users }) => {
     return (
       <AdminUserDetails 
         user={selectedUser} 
-        recordings={[]} // This prop is no longer used as AdminUserDetails fetches its own data
         onBack={handleBackToList} 
       />
     );

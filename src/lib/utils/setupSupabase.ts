@@ -17,6 +17,7 @@ export const initializeSupabase = async (): Promise<void> => {
       // but we're doing it here for simplicity
       try {
         const { error } = await supabase.storage.from('recordings').upload('test.txt', new Blob(['test']), {
+          cacheControl: '3600',
           upsert: true
         });
         if (error) {
@@ -30,37 +31,17 @@ export const initializeSupabase = async (): Promise<void> => {
       }
     }
     
-    // Check if the notifications table exists
-    const { error: tableCheckError } = await supabase.from('notifications').select('id').limit(1);
-    
-    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
-      console.log("Creating notifications table...");
+    // Create custom RPC functions for notifications and user password updates
+    try {
+      // Create add_notification function
+      await supabase.rpc('create_notification_function', {});
+      console.log("Created add_notification function");
       
-      // Create the notifications table
-      const { error: createTableError } = await supabase.rpc('create_notifications_table');
-      if (createTableError) {
-        console.error("Error creating notifications table:", createTableError);
-        
-        // Try direct SQL as fallback (this might not work depending on permissions)
-        try {
-          await supabase.rpc('execute_sql', {
-            sql_query: `
-              CREATE TABLE IF NOT EXISTS public.notifications (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id TEXT NOT NULL,
-                message TEXT NOT NULL,
-                read BOOLEAN NOT NULL DEFAULT false,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-              );
-            `
-          });
-          console.log("Created notifications table via execute_sql");
-        } catch (sqlError) {
-          console.error("Failed to create notifications table via execute_sql:", sqlError);
-        }
-      } else {
-        console.log("Notifications table created successfully");
-      }
+      // Create update_user_password function
+      await supabase.rpc('create_password_update_function', {});
+      console.log("Created update_user_password function");
+    } catch (rpcError) {
+      console.error("Error creating RPC functions:", rpcError);
     }
     
     console.log("Supabase initialization complete");

@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
@@ -309,23 +308,28 @@ export const cleanRecordingData = async (): Promise<void> => {
 
 // Get notifications for a user
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+  try {
+    // Use RPC function to get notifications
+    const { data, error } = await supabase.rpc('get_user_notifications', { p_user_id: userId });
     
-  if (error || !data) {
+    if (error || !data) {
+      console.error("Error getting notifications:", error);
+      return [];
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error in getUserNotifications:", error);
     return [];
   }
-  
-  return data;
 };
 
 // Mark notification as read
 export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
-  await supabase
-    .from('notifications')
-    .update({ read: true })
-    .eq('id', notificationId);
+  try {
+    // Use RPC function to mark notification as read
+    await supabase.rpc('mark_notification_read', { p_notification_id: notificationId });
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+  }
 };

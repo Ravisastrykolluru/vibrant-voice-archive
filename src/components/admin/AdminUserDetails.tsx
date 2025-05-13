@@ -291,12 +291,13 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack }) => 
     }
     
     try {
-      // Save the notification to the database
-      await supabase.from('notifications').insert({
-        user_id: user.user_id,
-        message: notification,
-        read: false
+      // Use custom RPC function to add notification to avoid type errors
+      const { error } = await supabase.rpc('add_notification', {
+        p_user_id: user.user_id,
+        p_message: notification
       });
+      
+      if (error) throw error;
       
       toast({
         title: "Notification sent",
@@ -322,12 +323,12 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack }) => 
     try {
       const newPassword = Math.random().toString(36).slice(2, 10);
       
-      // Update password in the users table
-      const { error } = await supabase
-        .from('users')
-        .update({ password: newPassword })
-        .eq('user_id', user.user_id);
-        
+      // Use custom RPC function to update password
+      const { error } = await supabase.rpc('update_user_password', {
+        p_user_id: user.user_id,
+        p_password: newPassword
+      });
+      
       if (error) throw error;
       
       toast({

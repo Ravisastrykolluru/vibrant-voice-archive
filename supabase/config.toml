@@ -1,1 +1,15 @@
+
 project_id = "zrydedyugxtrubygfnnu"
+
+[functions]
+  [functions.create_notification_function]
+  verify_jwt = true
+  
+  [functions.create_password_update_function]
+  verify_jwt = true
+  
+  [functions.get_user_notifications]
+  verify_jwt = true
+  
+  [functions.mark_notification_read]
+  verify_jwt = true
