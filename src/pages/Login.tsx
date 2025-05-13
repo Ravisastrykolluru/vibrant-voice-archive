@@ -8,8 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { 
-  findUserByCodeAndName, 
   getUserLanguage, 
   getRerecordingCount, 
   getUserNotifications,
@@ -77,13 +77,13 @@ const Login: React.FC = () => {
       }
       
       // Find complete user record from the users table
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('user_id', userId)
         .single();
         
-      if (!userData) {
+      if (userError || !userData) {
         toast({
           title: "User record not found",
           description: "Your account details could not be found. Please contact support.",

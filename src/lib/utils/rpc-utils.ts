@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
   try {
     const { data, error } = await supabase
-      .rpc<any[]>('get_user_notifications', { p_user_id: userId });
+      .rpc<any[], { p_user_id: string }>('get_user_notifications', { p_user_id: userId });
     
     if (error || !data) {
       console.error("Error getting notifications:", error);
@@ -22,7 +22,7 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
 export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc<any>('mark_notification_read', { p_notification_id: notificationId });
+      .rpc<null, { p_notification_id: string }>('mark_notification_read', { p_notification_id: notificationId });
       
     if (error) {
       console.error("Error marking notification as read:", error);
@@ -35,7 +35,10 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
 export const addNotification = async (userId: string, message: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc<any>('add_notification', { p_user_id: userId, p_message: message });
+      .rpc<null, { p_user_id: string, p_message: string }>('add_notification', { 
+        p_user_id: userId, 
+        p_message: message 
+      });
       
     if (error) {
       console.error("Error adding notification:", error);
@@ -49,7 +52,10 @@ export const addNotification = async (userId: string, message: string): Promise<
 export const updateUserPassword = async (userId: string, password: string): Promise<boolean> => {
   try {
     const { error } = await supabase
-      .rpc<any>('update_user_password', { p_user_id: userId, p_password: password });
+      .rpc<null, { p_user_id: string, p_password: string }>('update_user_password', { 
+        p_user_id: userId, 
+        p_password: password 
+      });
     
     if (error) {
       console.error("Error updating user password:", error);
