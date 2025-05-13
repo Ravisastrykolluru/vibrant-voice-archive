@@ -1,4 +1,5 @@
 
+
 import { supabase } from "@/integrations/supabase/client";
 
 export const initializeSupabase = async (): Promise<void> => {
@@ -39,11 +40,11 @@ export const initializeSupabase = async (): Promise<void> => {
     // Create custom RPC functions
     try {
       // Create notification functions
-      await supabase.rpc('create_notification_function' as never) as { data: any, error: any };
+      await supabase.rpc('create_notification_function') as { data: any, error: any };
       console.log("Created notification functions");
       
       // Create user password update function
-      await supabase.rpc('create_password_update_function' as never) as { data: any, error: any };
+      await supabase.rpc('create_password_update_function') as { data: any, error: any };
       console.log("Created password update functions");
     } catch (rpcError) {
       console.error("Error creating RPC functions:", rpcError);
