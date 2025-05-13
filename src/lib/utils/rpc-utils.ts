@@ -5,14 +5,14 @@ import { supabase } from "@/integrations/supabase/client";
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
   try {
     const { data, error } = await supabase
-      .rpc('get_user_notifications', { p_user_id: userId } as any);
+      .rpc<any[]>('get_user_notifications', { p_user_id: userId });
     
     if (error || !data) {
       console.error("Error getting notifications:", error);
       return [];
     }
     
-    return data as any[];
+    return data;
   } catch (error) {
     console.error("Error in getUserNotifications:", error);
     return [];
@@ -22,7 +22,7 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
 export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc('mark_notification_read', { p_notification_id: notificationId } as any);
+      .rpc<any>('mark_notification_read', { p_notification_id: notificationId });
       
     if (error) {
       console.error("Error marking notification as read:", error);
@@ -35,7 +35,7 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
 export const addNotification = async (userId: string, message: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc('add_notification', { p_user_id: userId, p_message: message } as any);
+      .rpc<any>('add_notification', { p_user_id: userId, p_message: message });
       
     if (error) {
       console.error("Error adding notification:", error);
@@ -49,7 +49,7 @@ export const addNotification = async (userId: string, message: string): Promise<
 export const updateUserPassword = async (userId: string, password: string): Promise<boolean> => {
   try {
     const { error } = await supabase
-      .rpc('update_user_password', { p_user_id: userId, p_password: password } as any);
+      .rpc<any>('update_user_password', { p_user_id: userId, p_password: password });
     
     if (error) {
       console.error("Error updating user password:", error);
@@ -64,11 +64,13 @@ export const updateUserPassword = async (userId: string, password: string): Prom
 };
 
 // Authentication Functions
-export const authenticateUser = async (mobileNumber: string, userId: string): Promise<any> => {
+export const authenticateUser = async (mobileNumber: string, uniqueCode: string): Promise<any> => {
   try {
     // Formulate email and password using the specified format
     const email = `${mobileNumber}@spl.com`;
-    const password = `${userId}@spl`;
+    const password = `${uniqueCode}@spl`;
+    
+    console.log("Attempting authentication with:", { email, password });
     
     // Try to sign in with Supabase auth
     const { data, error } = await supabase.auth.signInWithPassword({

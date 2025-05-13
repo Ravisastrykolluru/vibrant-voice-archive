@@ -50,7 +50,7 @@ export const initializeSupabase = async () => {
     // Step 2: Create custom RPC functions
     try {
       // Create notification functions
-      const { error: notificationError } = await supabase.rpc('create_notification_function' as any);
+      const { error: notificationError } = await supabase.rpc('create_notification_function');
       if (notificationError) {
         console.error("Error creating notification functions:", notificationError);
       } else {
@@ -58,7 +58,7 @@ export const initializeSupabase = async () => {
       }
       
       // Create user password update function
-      const { error: passwordError } = await supabase.rpc('create_password_update_function' as any);
+      const { error: passwordError } = await supabase.rpc('create_password_update_function');
       if (passwordError) {
         console.error("Error creating password update functions:", passwordError);
       } else {

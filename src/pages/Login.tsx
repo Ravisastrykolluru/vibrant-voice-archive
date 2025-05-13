@@ -7,15 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { 
   findUserByCodeAndName, 
   getUserLanguage, 
   getRerecordingCount, 
   getUserNotifications,
   markNotificationAsRead,
-  authenticateUser
 } from "@/lib/utils/supabase-utils";
+import { authenticateUser } from "@/lib/utils/rpc-utils";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ import {
 const Login: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
   const [uniqueCode, setUniqueCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -35,14 +35,14 @@ const Login: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const handleFindUser = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     // Validate inputs
-    if (!name || !uniqueCode) {
+    if (!mobileNumber || !uniqueCode) {
       toast({
-        title: "Please enter both your name and unique code",
+        title: "Please enter both your mobile number and unique code",
         variant: "destructive"
       });
       setIsLoading(false);
@@ -50,26 +50,43 @@ const Login: React.FC = () => {
     }
     
     try {
-      // Find user by code and name
-      const foundUser = await findUserByCodeAndName(uniqueCode.toUpperCase(), name);
+      // Authenticate user with their mobile number and unique code
+      const authResult = await authenticateUser(mobileNumber, uniqueCode);
       
-      if (!foundUser) {
+      if (!authResult.success) {
         toast({
-          title: "User not found",
-          description: "Please check your name and unique code or register as a new user",
+          title: "Authentication failed",
+          description: "Please check your mobile number and unique code or register as a new user",
           variant: "destructive"
         });
         setIsLoading(false);
         return;
       }
       
-      // Authenticate user with Supabase Auth
-      const authResult = await authenticateUser(foundUser.contact_number, foundUser.user_id);
+      // Get user data using the user_id stored in the auth metadata
+      const userId = authResult.user?.user_metadata?.user_id;
       
-      if (!authResult.success) {
+      if (!userId) {
         toast({
-          title: "Authentication failed",
-          description: "Login credentials are invalid. Please contact support.",
+          title: "User data incomplete",
+          description: "Your account is missing important information. Please contact support.",
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
+      
+      // Find complete user record from the users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+        
+      if (!userData) {
+        toast({
+          title: "User record not found",
+          description: "Your account details could not be found. Please contact support.",
           variant: "destructive"
         });
         setIsLoading(false);
@@ -77,25 +94,25 @@ const Login: React.FC = () => {
       }
       
       // Get user's language
-      const language = await getUserLanguage(foundUser.user_id);
+      const language = await getUserLanguage(userId);
       
       // Get re-recording count (if language is available)
       let count = 0;
       if (language) {
-        count = await getRerecordingCount(foundUser.user_id, language);
+        count = await getRerecordingCount(userId, language);
         setRerecordingCount(count);
       }
       
       // Get user notifications
-      const userNotifications = await getUserNotifications(foundUser.user_id);
+      const userNotifications = await getUserNotifications(userId);
       setNotifications(userNotifications);
       
       // Set user data for session options
-      setUser({...foundUser, language});
+      setUser({...userData, language});
       
       toast({
         title: "Login Successful",
-        description: `Welcome back, ${foundUser.name}!`
+        description: `Welcome back, ${userData.name}!`
       });
       
       // Show notifications if there are any unread
@@ -166,14 +183,14 @@ const Login: React.FC = () => {
           </div>
           
           {!user ? (
-            <form onSubmit={handleFindUser} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="mobileNumber">Mobile Number</Label>
                 <Input 
-                  id="name" 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)} 
-                  placeholder="Enter your full name" 
+                  id="mobileNumber" 
+                  value={mobileNumber} 
+                  onChange={(e) => setMobileNumber(e.target.value)} 
+                  placeholder="Enter your mobile number" 
                   required
                 />
               </div>
@@ -196,7 +213,7 @@ const Login: React.FC = () => {
                 className="w-full mt-6" 
                 disabled={isLoading}
               >
-                {isLoading ? "Verifying..." : "Verify Identity"}
+                {isLoading ? "Logging in..." : "Login"}
               </Button>
             </form>
           ) : (
