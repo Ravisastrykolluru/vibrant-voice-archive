@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { 
@@ -69,6 +68,18 @@ export const saveUser = async (userData: {
   contactNumber: string;
   language: string;
 }): Promise<{ uniqueCode: string } | null> => {
+  // Check if contact number is already in use
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('unique_code')
+    .eq('contact_number', userData.contactNumber)
+    .single();
+  
+  if (existingUser) {
+    console.error('Contact number already in use');
+    return null;
+  }
+  
   const uniqueCode = await generateUniqueCode();
   
   const { error: userError } = await supabase.from('users').insert({

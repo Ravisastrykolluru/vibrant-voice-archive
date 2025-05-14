@@ -71,10 +71,16 @@ const Register: React.FC = () => {
       });
       
       if (!result) {
-        throw new Error("Failed to create user");
+        toast({
+          title: "Registration Failed",
+          description: "This phone number is already registered. Please use a different number.",
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
       }
       
-      // Show success message with the user ID and unique code
+      // Show success message with the unique code
       toast({
         title: "Registration Successful",
         description: `Your unique code is ${result.uniqueCode}. Please save this for future login.`
@@ -82,7 +88,7 @@ const Register: React.FC = () => {
       
       // Navigate to recording page
       setTimeout(() => {
-        navigate(`/record/${result.userId}/${formData.language}`);
+        navigate(`/record/${result.uniqueCode}/${formData.language}`);
         setIsLoading(false);
       }, 1500);
       

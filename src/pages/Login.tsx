@@ -1,28 +1,16 @@
 
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell } from "lucide-react";
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { authenticateUser, getUserNotifications, getLanguages } from "@/lib/utils/supabase-utils";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  getUserLanguage, 
-  getRerecordingCount, 
-  getUserNotifications,
-  markNotificationAsRead,
-} from "@/lib/utils/supabase-utils";
-import { authenticateUser } from "@/lib/utils/rpc-utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription
-} from "@/components/ui/dialog";
 
 const Login: React.FC = () => {
   const { toast } = useToast();
@@ -30,123 +18,130 @@ const Login: React.FC = () => {
   const [mobileNumber, setMobileNumber] = useState("");
   const [uniqueCode, setUniqueCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [rerecordingCount, setRerecordingCount] = useState(0);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [languages, setLanguages] = useState<any[]>([]);
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  
+  React.useEffect(() => {
+    const loadLanguages = async () => {
+      const langs = await getLanguages();
+      setLanguages(langs);
+    };
+    
+    loadLanguages();
+    
+    // Check if user is already authenticated
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        // Get user metadata to extract unique_code
+        const unique_code = data.session.user.user_metadata?.unique_code;
+        if (unique_code) {
+          // Get user's preferred language
+          const { data: profileData } = await supabase
+            .from('user_languages')
+            .select('language')
+            .eq('unique_code', unique_code)
+            .single();
+            
+          if (profileData?.language) {
+            navigate(`/record/${unique_code}/${profileData.language}`);
+          } else {
+            toast({
+              title: "Welcome back!",
+              description: "Please select a language to continue recording"
+            });
+          }
+        }
+      }
+    };
+    
+    checkAuth();
+  }, [navigate, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     
-    // Validate inputs
     if (!mobileNumber || !uniqueCode) {
       toast({
-        title: "Please enter both your mobile number and unique code",
+        title: "Please enter all fields",
         variant: "destructive"
       });
-      setIsLoading(false);
       return;
     }
     
+    setIsLoading(true);
+    
     try {
-      // Authenticate user with their mobile number and unique code
-      const authResult = await authenticateUser(mobileNumber, uniqueCode);
+      // First clean up any existing auth state
+      await supabase.auth.signOut();
       
-      if (!authResult.success) {
+      // Try to authenticate
+      const result = await authenticateUser(mobileNumber, uniqueCode);
+      
+      if (!result.success) {
         toast({
-          title: "Authentication failed",
-          description: "Please check your mobile number and unique code",
+          title: "Authentication Failed",
+          description: result.error || "Invalid credentials",
           variant: "destructive"
         });
         setIsLoading(false);
         return;
       }
       
-      // User data comes directly from authenticateUser now
-      if (!authResult.profile) {
-        toast({
-          title: "User data incomplete",
-          description: "Your account is missing important information. Please contact support.",
-          variant: "destructive"
-        });
+      // Get user profile
+      const { profile } = result;
+      
+      // Load notifications
+      await getUserNotifications(profile.unique_code);
+      
+      // If user profile was found, check if a language is selected
+      if (!selectedLanguage) {
+        // Get user's preferred language
+        const { data: langData } = await supabase
+          .from('user_languages')
+          .select('language')
+          .eq('unique_code', profile.unique_code)
+          .single();
+          
+        if (langData?.language) {
+          setSelectedLanguage(langData.language);
+          
+          // Navigate to recording page with user's preferred language
+          setTimeout(() => {
+            navigate(`/record/${profile.unique_code}/${langData.language}`);
+            setIsLoading(false);
+          }, 500);
+          return;
+        } else {
+          // If no language preference found, show language selection
+          toast({
+            title: "Please Select a Language",
+            description: "Please choose a language to continue recording"
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // If a language is selected, navigate to recording page
+      setTimeout(() => {
+        navigate(`/record/${profile.unique_code}/${selectedLanguage}`);
         setIsLoading(false);
-        return;
-      }
+      }, 500);
       
-      const userData = authResult.profile;
-      
-      // Get user's language
-      const language = await getUserLanguage(userData.unique_code);
-      
-      // Get re-recording count (if language is available)
-      let count = 0;
-      if (language) {
-        count = await getRerecordingCount(userData.unique_code, language);
-        setRerecordingCount(count);
-      }
-      
-      // Get user notifications
-      const userNotifications = await getUserNotifications(userData.unique_code);
-      setNotifications(userNotifications);
-      
-      // Set user data for session options
-      setUser({...userData, language});
-      
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${userData.name}!`
-      });
-      
-      // Show notifications if there are any unread
-      if (userNotifications.filter(n => !n.read).length > 0) {
-        setShowNotifications(true);
-      }
-      
-      setIsLoading(false);
     } catch (error) {
       console.error("Login error:", error);
       toast({
         title: "Login Failed",
-        description: "An unexpected error occurred. Please try again.",
+        description: "There was an error logging in. Please try again.",
         variant: "destructive"
       });
       setIsLoading(false);
     }
   };
 
-  const handleContinueRecording = () => {
-    if (!user) return;
-    
-    if (user.language) {
-      navigate(`/record/${user.unique_code}/${user.language}`);
-    } else {
-      // If the user doesn't have a language assigned, redirect to main page
-      // and let them know they need to select a language
-      toast({
-        title: "No language assigned",
-        description: "Please contact the administrator to assign a language",
-        variant: "destructive"
-      });
-      navigate("/");
-    }
-  };
-
-  const handleRerecordSentences = () => {
-    if (!user || !user.language) return;
-    
-    navigate(`/record/${user.unique_code}/${user.language}?mode=rerecording`);
-  };
-
-  const handleCloseNotifications = async () => {
-    // Mark all notifications as read
-    if (user && notifications.length > 0) {
-      for (const notification of notifications.filter(n => !n.read)) {
-        await markNotificationAsRead(notification.id);
-      }
-    }
-    
-    setShowNotifications(false);
+  const handleLanguageChange = (language: string) => {
+    setSelectedLanguage(language);
   };
 
   return (
@@ -162,134 +157,84 @@ const Login: React.FC = () => {
             >
               <ArrowLeft size={20} />
             </Button>
-            <h2 className="text-2xl font-bold">Returning User Login</h2>
+            <h2 className="text-2xl font-bold">Existing User Login</h2>
           </div>
           
-          {!user ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="mobileNumber">Mobile Number</Label>
-                <Input 
-                  id="mobileNumber" 
-                  value={mobileNumber} 
-                  onChange={(e) => setMobileNumber(e.target.value)} 
-                  placeholder="Enter your mobile number" 
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="uniqueCode">Unique Code</Label>
-                <Input 
-                  id="uniqueCode" 
-                  value={uniqueCode} 
-                  onChange={(e) => setUniqueCode(e.target.value.toUpperCase())} 
-                  placeholder="Enter your 5-character code" 
-                  maxLength={5}
-                  className="uppercase"
-                  required
-                />
-              </div>
-              
-              <Button 
-                type="submit" 
-                className="w-full mt-6" 
-                disabled={isLoading}
-              >
-                {isLoading ? "Logging in..." : "Login"}
-              </Button>
-            </form>
-          ) : (
-            <div className="space-y-6">
-              <div className="p-4 bg-blue-50 rounded-md">
-                <div className="flex justify-between items-center">
-                  <p className="font-medium">Welcome, {user.name}</p>
-                  {notifications.filter(n => !n.read).length > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex items-center" 
-                      onClick={() => setShowNotifications(true)}
-                    >
-                      <Bell size={16} className="mr-1 text-red-500" />
-                      {notifications.filter(n => !n.read).length} Message{notifications.filter(n => !n.read).length !== 1 && 's'}
-                    </Button>
-                  )}
-                </div>
-                <p className="text-sm text-gray-600 mt-1">Code: {user.unique_code}</p>
-                {user.language && (
-                  <p className="text-sm text-gray-600">Language: {user.language}</p>
-                )}
-                
-                {rerecordingCount > 0 && (
-                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <p className="text-sm text-yellow-700">
-                      You have {rerecordingCount} sentence(s) that need to be re-recorded.
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="space-y-3">
-                <Button 
-                  className="w-full" 
-                  onClick={handleContinueRecording}
-                >
-                  Continue Recording Session
-                </Button>
-                
-                {rerecordingCount > 0 && (
-                  <Button 
-                    variant="outline" 
-                    className="w-full" 
-                    onClick={handleRerecordSentences}
-                  >
-                    Re-record Flagged Sentences ({rerecordingCount})
-                  </Button>
-                )}
-              </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="mobileNumber">Mobile Number</Label>
+              <Input 
+                id="mobileNumber" 
+                value={mobileNumber} 
+                onChange={(e) => setMobileNumber(e.target.value)} 
+                placeholder="Enter your mobile number"
+                required
+              />
             </div>
-          )}
-          
-          <p className="text-sm text-center mt-6 text-gray-500">
-            Don't have a unique code?{" "}
-            <Button variant="link" className="p-0" onClick={() => navigate("/register")}>
-              Register here
+            
+            <div className="space-y-2">
+              <Label htmlFor="uniqueCode">Unique Code</Label>
+              <Input 
+                id="uniqueCode" 
+                value={uniqueCode} 
+                onChange={(e) => setUniqueCode(e.target.value.toUpperCase())} 
+                placeholder="Enter your unique code" 
+                maxLength={5}
+                required
+                className="uppercase"
+              />
+              <p className="text-xs text-gray-500">
+                Enter the 5-digit code that was provided during registration
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Language (Optional)</Label>
+              <Select onValueChange={handleLanguageChange} value={selectedLanguage}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {languages.length > 0 ? (
+                    languages.map(lang => (
+                      <SelectItem key={lang.id} value={lang.name}>
+                        {lang.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-languages" disabled>
+                      No languages available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              
+              {languages.length === 0 && (
+                <p className="text-sm text-yellow-600 mt-1">
+                  No languages available. Please contact the administrator.
+                </p>
+              )}
+            </div>
+            
+            <Button 
+              type="submit" 
+              className="w-full mt-6" 
+              disabled={isLoading || (!mobileNumber || !uniqueCode)}
+            >
+              {isLoading ? "Signing In..." : "Sign In"}
             </Button>
-          </p>
+            
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <Link to="/register" className="text-blue-600 hover:underline">
+                  Register Here
+                </Link>
+              </p>
+            </div>
+          </form>
         </Card>
       </div>
-
-      <Dialog open={showNotifications} onOpenChange={handleCloseNotifications}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Notifications</DialogTitle>
-            <DialogDescription>
-              Messages from the administrator
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 my-4 max-h-96 overflow-y-auto">
-            {notifications.length > 0 ? (
-              notifications.map((notification) => (
-                <div 
-                  key={notification.id} 
-                  className={`p-3 border rounded-md ${notification.read ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'}`}
-                >
-                  <p className="text-sm">{notification.message}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString()}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="text-center text-gray-500">No notifications</p>
-            )}
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={handleCloseNotifications}>Close</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 };

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import CelebrationCard from "@/components/CelebrationCard";
 import FeedbackForm from "@/components/FeedbackForm";
 import {
@@ -218,7 +218,7 @@ const RecordingSession: React.FC = () => {
       
       // Save metadata
       await saveRecordingMetadata({
-        userId: userId!,
+        uniqueCode: userId!,
         language: language.name,
         sentenceIndex: currentSentenceIndex,
         sentenceText: language.sentences[currentSentenceIndex],
