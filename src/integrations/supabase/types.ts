@@ -48,21 +48,21 @@ export type Database = {
           created_at: string
           id: string
           rating: number
-          user_id: string
+          unique_code: string | null
         }
         Insert: {
           comments?: string | null
           created_at?: string
           id?: string
           rating: number
-          user_id: string
+          unique_code?: string | null
         }
         Update: {
           comments?: string | null
           created_at?: string
           id?: string
           rating?: number
-          user_id?: string
+          unique_code?: string | null
         }
         Relationships: []
       }
@@ -93,21 +93,21 @@ export type Database = {
           id: string
           message: string
           read: boolean
-          user_id: string
+          unique_code: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           message: string
           read?: boolean
-          user_id: string
+          unique_code?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           message?: string
           read?: boolean
-          user_id?: string
+          unique_code?: string | null
         }
         Relationships: []
       }
@@ -121,7 +121,7 @@ export type Database = {
           sentence_index: number
           sentence_text: string
           snr: number | null
-          user_id: string
+          unique_code: string | null
         }
         Insert: {
           file_path: string
@@ -132,7 +132,7 @@ export type Database = {
           sentence_index: number
           sentence_text: string
           snr?: number | null
-          user_id: string
+          unique_code?: string | null
         }
         Update: {
           file_path?: string
@@ -143,36 +143,28 @@ export type Database = {
           sentence_index?: number
           sentence_text?: string
           snr?: number | null
-          user_id?: string
+          unique_code?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "recordings_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       user_languages: {
         Row: {
           created_at: string
           id: string
           language: string
-          user_id: string
+          unique_code: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           language: string
-          user_id: string
+          unique_code?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           language?: string
-          user_id?: string
+          unique_code?: string | null
         }
         Relationships: []
       }
@@ -185,8 +177,7 @@ export type Database = {
           id: string
           name: string
           password: string | null
-          unique_code: string | null
-          user_id: string
+          unique_code: string
         }
         Insert: {
           age: number
@@ -196,8 +187,7 @@ export type Database = {
           id?: string
           name: string
           password?: string | null
-          unique_code?: string | null
-          user_id: string
+          unique_code?: string
         }
         Update: {
           age?: number
@@ -207,8 +197,7 @@ export type Database = {
           id?: string
           name?: string
           password?: string | null
-          unique_code?: string | null
-          user_id?: string
+          unique_code?: string
         }
         Relationships: []
       }

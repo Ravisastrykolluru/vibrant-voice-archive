@@ -2,10 +2,13 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // Notifications Functions
-export const getUserNotifications = async (userId: string): Promise<any[]> => {
+export const getUserNotifications = async (uniqueCode: string): Promise<any[]> => {
   try {
     const { data, error } = await supabase
-      .rpc<any[], { p_user_id: string }>('get_user_notifications', { p_user_id: userId });
+      .from('notifications')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .order('created_at', { ascending: false });
     
     if (error || !data) {
       console.error("Error getting notifications:", error);
@@ -22,7 +25,9 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
 export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc<null, { p_notification_id: string }>('mark_notification_read', { p_notification_id: notificationId });
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
       
     if (error) {
       console.error("Error marking notification as read:", error);
@@ -32,12 +37,14 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
   }
 };
 
-export const addNotification = async (userId: string, message: string): Promise<void> => {
+export const addNotification = async (uniqueCode: string, message: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .rpc<null, { p_user_id: string, p_message: string }>('add_notification', { 
-        p_user_id: userId, 
-        p_message: message 
+      .from('notifications')
+      .insert({ 
+        unique_code: uniqueCode, 
+        message: message,
+        read: false
       });
       
     if (error) {
@@ -49,13 +56,12 @@ export const addNotification = async (userId: string, message: string): Promise<
 };
 
 // User Password Functions
-export const updateUserPassword = async (userId: string, password: string): Promise<boolean> => {
+export const updateUserPassword = async (uniqueCode: string, password: string): Promise<boolean> => {
   try {
     const { error } = await supabase
-      .rpc<null, { p_user_id: string, p_password: string }>('update_user_password', { 
-        p_user_id: userId, 
-        p_password: password 
-      });
+      .from('users')
+      .update({ password: password })
+      .eq('unique_code', uniqueCode);
     
     if (error) {
       console.error("Error updating user password:", error);
@@ -89,7 +95,19 @@ export const authenticateUser = async (mobileNumber: string, uniqueCode: string)
       return { success: false, error: error.message };
     }
     
-    return { success: true, user: data.user, session: data.session };
+    // Get user profile from users table using unique_code
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .single();
+      
+    if (userError || !userData) {
+      console.error("User data retrieval error:", userError);
+      return { success: false, error: "User profile not found" };
+    }
+    
+    return { success: true, user: data.user, session: data.session, profile: userData };
   } catch (error) {
     console.error("Error in authenticateUser:", error);
     return { success: false, error: "Authentication failed" };
@@ -99,12 +117,12 @@ export const authenticateUser = async (mobileNumber: string, uniqueCode: string)
 // Register user with Supabase Auth
 export const registerUserAuth = async (userData: {
   mobileNumber: string, 
-  userId: string,
+  uniqueCode: string,
   name: string
 }): Promise<any> => {
   try {
     const email = `${userData.mobileNumber}@spl.com`;
-    const password = `${userData.userId}@spl`;
+    const password = `${userData.uniqueCode}@spl`;
     
     // Register the user with Supabase Auth
     const { data, error } = await supabase.auth.signUp({
@@ -113,7 +131,7 @@ export const registerUserAuth = async (userData: {
       options: {
         data: {
           name: userData.name,
-          user_id: userData.userId
+          unique_code: userData.uniqueCode
         }
       }
     });
@@ -131,7 +149,7 @@ export const registerUserAuth = async (userData: {
 };
 
 // Function to send notification for rerecording
-export const sendRerecordingNotification = async (userId: string, sentence: string): Promise<void> => {
+export const sendRerecordingNotification = async (uniqueCode: string, sentence: string): Promise<void> => {
   const message = `You need to re-record the following sentence: "${sentence.substring(0, 50)}${sentence.length > 50 ? '...' : ''}"`;
-  await addNotification(userId, message);
+  await addNotification(uniqueCode, message);
 };

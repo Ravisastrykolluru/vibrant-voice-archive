@@ -56,17 +56,15 @@ const Login: React.FC = () => {
       if (!authResult.success) {
         toast({
           title: "Authentication failed",
-          description: "Please check your mobile number and unique code or register as a new user",
+          description: "Please check your mobile number and unique code",
           variant: "destructive"
         });
         setIsLoading(false);
         return;
       }
       
-      // Get user data using the user_id stored in the auth metadata
-      const userId = authResult.user?.user_metadata?.user_id;
-      
-      if (!userId) {
+      // User data comes directly from authenticateUser now
+      if (!authResult.profile) {
         toast({
           title: "User data incomplete",
           description: "Your account is missing important information. Please contact support.",
@@ -76,35 +74,20 @@ const Login: React.FC = () => {
         return;
       }
       
-      // Find complete user record from the users table
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-        
-      if (userError || !userData) {
-        toast({
-          title: "User record not found",
-          description: "Your account details could not be found. Please contact support.",
-          variant: "destructive"
-        });
-        setIsLoading(false);
-        return;
-      }
+      const userData = authResult.profile;
       
       // Get user's language
-      const language = await getUserLanguage(userId);
+      const language = await getUserLanguage(userData.unique_code);
       
       // Get re-recording count (if language is available)
       let count = 0;
       if (language) {
-        count = await getRerecordingCount(userId, language);
+        count = await getRerecordingCount(userData.unique_code, language);
         setRerecordingCount(count);
       }
       
       // Get user notifications
-      const userNotifications = await getUserNotifications(userId);
+      const userNotifications = await getUserNotifications(userData.unique_code);
       setNotifications(userNotifications);
       
       // Set user data for session options
@@ -136,7 +119,7 @@ const Login: React.FC = () => {
     if (!user) return;
     
     if (user.language) {
-      navigate(`/record/${user.user_id}/${user.language}`);
+      navigate(`/record/${user.unique_code}/${user.language}`);
     } else {
       // If the user doesn't have a language assigned, redirect to main page
       // and let them know they need to select a language
@@ -152,7 +135,7 @@ const Login: React.FC = () => {
   const handleRerecordSentences = () => {
     if (!user || !user.language) return;
     
-    navigate(`/record/${user.user_id}/${user.language}?mode=rerecording`);
+    navigate(`/record/${user.unique_code}/${user.language}?mode=rerecording`);
   };
 
   const handleCloseNotifications = async () => {
@@ -233,8 +216,7 @@ const Login: React.FC = () => {
                     </Button>
                   )}
                 </div>
-                <p className="text-sm text-gray-600 mt-1">ID: {user.user_id}</p>
-                <p className="text-sm text-gray-600">Code: {user.unique_code}</p>
+                <p className="text-sm text-gray-600 mt-1">Code: {user.unique_code}</p>
                 {user.language && (
                   <p className="text-sm text-gray-600">Language: {user.language}</p>
                 )}

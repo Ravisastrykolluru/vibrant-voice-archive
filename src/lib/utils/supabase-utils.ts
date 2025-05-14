@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { 
@@ -19,9 +20,7 @@ interface ExtendedUser {
   id: string;
   name: string;
   password: string | null;
-  unique_code: string | null;
-  user_id: string;
-  languagePreference?: string; // Add this property to the type
+  unique_code: string;
 }
 
 // Re-export notification and user password functions
@@ -51,7 +50,7 @@ export const generateUniqueCode = async (): Promise<string> => {
     // Check if code is already in use
     const { data } = await supabase
       .from('users')
-      .select('user_id')
+      .select('unique_code')
       .eq('unique_code', code);
       
     isUnique = !data || data.length === 0;
@@ -69,17 +68,15 @@ export const saveUser = async (userData: {
   gender: string;
   contactNumber: string;
   language: string;
-}): Promise<{ userId: string; uniqueCode: string } | null> => {
+}): Promise<{ uniqueCode: string } | null> => {
   const uniqueCode = await generateUniqueCode();
-  const userId = `user_${Date.now().toString().slice(-6)}`;
   
   const { error: userError } = await supabase.from('users').insert({
-    user_id: userId,
+    unique_code: uniqueCode,
     name: userData.name,
     age: userData.age,
     gender: userData.gender,
     contact_number: userData.contactNumber,
-    unique_code: uniqueCode,
     created_at: new Date().toISOString() // Ensure creation date is set
   });
   
@@ -91,13 +88,13 @@ export const saveUser = async (userData: {
   // Also register the user with Supabase Auth
   await registerUserAuth({
     mobileNumber: userData.contactNumber,
-    userId: userId,
+    uniqueCode: uniqueCode,
     name: userData.name
   });
   
   // Save user language
   const { error: langError } = await supabase.from('user_languages').insert({
-    user_id: userId,
+    unique_code: uniqueCode,
     language: userData.language
   });
   
@@ -106,7 +103,7 @@ export const saveUser = async (userData: {
     // We don't return null here as the user is already created
   }
   
-  return { userId, uniqueCode };
+  return { uniqueCode };
 };
 
 export const findUserByCodeAndName = async (code: string, name: string): Promise<any> => {
@@ -123,11 +120,11 @@ export const findUserByCodeAndName = async (code: string, name: string): Promise
   return users[0];
 };
 
-export const getUserLanguage = async (userId: string): Promise<string | null> => {
+export const getUserLanguage = async (uniqueCode: string): Promise<string | null> => {
   const { data, error } = await supabase
     .from('user_languages')
     .select('language')
-    .eq('user_id', userId)
+    .eq('unique_code', uniqueCode)
     .single();
     
   if (error || !data) {
@@ -151,11 +148,11 @@ export const getLanguages = async (): Promise<any[]> => {
 };
 
 // Recording Functions
-export const getUserRecordings = async (userId: string): Promise<any[]> => {
+export const getUserRecordings = async (uniqueCode: string): Promise<any[]> => {
   const { data, error } = await supabase
     .from('recordings')
     .select('*')
-    .eq('user_id', userId);
+    .eq('unique_code', uniqueCode);
     
   if (error || !data) {
     return [];
@@ -165,7 +162,7 @@ export const getUserRecordings = async (userId: string): Promise<any[]> => {
 };
 
 export const saveRecordingMetadata = async (metadata: {
-  userId: string;
+  uniqueCode: string;
   language: string;
   sentenceIndex: number;
   sentenceText: string;
@@ -176,7 +173,7 @@ export const saveRecordingMetadata = async (metadata: {
   const { data } = await supabase
     .from('recordings')
     .select('id')
-    .eq('user_id', metadata.userId)
+    .eq('unique_code', metadata.uniqueCode)
     .eq('language', metadata.language)
     .eq('sentence_index', metadata.sentenceIndex);
     
@@ -197,7 +194,7 @@ export const saveRecordingMetadata = async (metadata: {
     await supabase
       .from('recordings')
       .insert({
-        user_id: metadata.userId,
+        unique_code: metadata.uniqueCode,
         language: metadata.language,
         sentence_index: metadata.sentenceIndex,
         sentence_text: metadata.sentenceText,
@@ -208,13 +205,13 @@ export const saveRecordingMetadata = async (metadata: {
   }
 };
 
-export const markForRerecording = async (userId: string, language: string, sentenceIndex: number): Promise<void> => {
+export const markForRerecording = async (uniqueCode: string, language: string, sentenceIndex: number): Promise<void> => {
   try {
     // Get the sentence text first
     const { data: recordingData } = await supabase
       .from('recordings')
       .select('sentence_text')
-      .eq('user_id', userId)
+      .eq('unique_code', uniqueCode)
       .eq('language', language)
       .eq('sentence_index', sentenceIndex)
       .single();
@@ -223,24 +220,24 @@ export const markForRerecording = async (userId: string, language: string, sente
     await supabase
       .from('recordings')
       .update({ needs_rerecording: true })
-      .eq('user_id', userId)
+      .eq('unique_code', uniqueCode)
       .eq('language', language)
       .eq('sentence_index', sentenceIndex);
     
     // Send notification to user
     if (recordingData && recordingData.sentence_text) {
-      await sendRerecordingNotification(userId, recordingData.sentence_text);
+      await sendRerecordingNotification(uniqueCode, recordingData.sentence_text);
     }
   } catch (error) {
     console.error("Error marking for rerecording:", error);
   }
 };
 
-export const getRerecordingCount = async (userId: string, language: string): Promise<number> => {
+export const getRerecordingCount = async (uniqueCode: string, language: string): Promise<number> => {
   const { data, error } = await supabase
     .from('recordings')
     .select('id')
-    .eq('user_id', userId)
+    .eq('unique_code', uniqueCode)
     .eq('language', language)
     .eq('needs_rerecording', true);
     
@@ -254,18 +251,18 @@ export const getRerecordingCount = async (userId: string, language: string): Pro
 // File Storage Functions
 export const saveRecordingBlob = async (
   blob: Blob, 
-  userId: string, 
+  uniqueCode: string, 
   language: string, 
   sentenceIndex: number,
   isRerecording: boolean = false
 ): Promise<string> => {
   // Create date-based folder structure
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const { data: userData } = await supabase.from('users').select('gender').eq('user_id', userId).single();
+  const { data: userData } = await supabase.from('users').select('gender').eq('unique_code', uniqueCode).single();
   const gender = userData?.gender || 'unknown';
   
   const bucket = isRerecording ? 'rerecordings' : 'recordings';
-  const fileName = `${today}/${gender}_${language}_${userId}/${sentenceIndex}.wav`;
+  const fileName = `${today}/${gender}_${language}_${uniqueCode}/${sentenceIndex}.wav`;
   
   const { data, error } = await supabase
     .storage
@@ -298,11 +295,11 @@ export const getRecordingBlob = async (filePath: string, isRerecording: boolean 
   return data;
 };
 
-export const saveUserFeedback = async (userId: string, rating: number, comments: string): Promise<void> => {
+export const saveUserFeedback = async (uniqueCode: string, rating: number, comments: string): Promise<void> => {
   await supabase
     .from('feedback')
     .insert({
-      user_id: userId,
+      unique_code: uniqueCode,
       rating,
       comments
     });
@@ -392,11 +389,11 @@ export const getAllUsers = async (): Promise<ExtendedUser[]> => {
     const { data: langData } = await supabase
       .from('user_languages')
       .select('language')
-      .eq('user_id', user.user_id)
+      .eq('unique_code', user.unique_code)
       .single();
       
     if (langData) {
-      user.languagePreference = langData.language; // Now TypeScript knows this property exists
+      (user as any).languagePreference = langData.language;
     }
   }
   
@@ -404,13 +401,13 @@ export const getAllUsers = async (): Promise<ExtendedUser[]> => {
 };
 
 // Delete user recordings
-export const deleteUserRecordings = async (userId: string): Promise<boolean> => {
+export const deleteUserRecordings = async (uniqueCode: string): Promise<boolean> => {
   try {
     // 1. Get all recordings for this user
     const { data: recordings } = await supabase
       .from('recordings')
       .select('*')
-      .eq('user_id', userId);
+      .eq('unique_code', uniqueCode);
       
     if (!recordings || recordings.length === 0) {
       return true; // No recordings to delete
@@ -420,7 +417,7 @@ export const deleteUserRecordings = async (userId: string): Promise<boolean> => 
     const { error: dbError } = await supabase
       .from('recordings')
       .delete()
-      .eq('user_id', userId);
+      .eq('unique_code', uniqueCode);
       
     if (dbError) throw dbError;
     
@@ -434,7 +431,7 @@ export const deleteUserRecordings = async (userId: string): Promise<boolean> => 
     const { data: userData } = await supabase
       .from('users')
       .select('gender')
-      .eq('user_id', userId)
+      .eq('unique_code', uniqueCode)
       .single();
       
     const gender = userData?.gender || 'unknown';
@@ -442,7 +439,7 @@ export const deleteUserRecordings = async (userId: string): Promise<boolean> => 
     
     // Delete each date folder for this user's recordings
     for (const date of recordingDates) {
-      const folderPath = `${date}/${gender}_${language}_${userId}`;
+      const folderPath = `${date}/${gender}_${language}_${uniqueCode}`;
       
       // List all files in this folder
       const { data: files } = await supabase.storage

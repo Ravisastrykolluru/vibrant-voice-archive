@@ -81,12 +81,12 @@ export const initializeSupabase = async () => {
 // Sync a user's Supabase Auth credentials
 export const syncUserAuthCredentials = async (userData: {
   mobileNumber: string, 
-  userId: string,
+  uniqueCode: string,
   name: string
 }): Promise<boolean> => {
   try {
     const email = `${userData.mobileNumber}@spl.com`;
-    const password = `${userData.userId}@spl`;
+    const password = `${userData.uniqueCode}@spl`;
     
     // Check if user exists in auth
     const { data: userExists } = await supabase.auth.signInWithPassword({
@@ -102,7 +102,7 @@ export const syncUserAuthCredentials = async (userData: {
         options: {
           data: {
             name: userData.name,
-            user_id: userData.userId
+            unique_code: userData.uniqueCode
           }
         }
       });
