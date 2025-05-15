@@ -78,17 +78,21 @@ export const updateUserPassword = async (uniqueCode: string, password: string): 
 // Authentication Functions
 export const authenticateUser = async (mobileNumber: string, uniqueCode: string, language: string = ""): Promise<any> => {
   try {
-    // First, check if the user exists with the given mobile number and unique code
+    // Modified to allow authentication with just uniqueCode and language
+    const whereClause = mobileNumber 
+      ? { unique_code: uniqueCode, contact_number: mobileNumber }
+      : { unique_code: uniqueCode };
+    
+    // First, check if the user exists with the given unique code (and mobile number if provided)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
-      .eq('unique_code', uniqueCode)
-      .eq('contact_number', mobileNumber)
+      .match(whereClause)
       .single();
       
     if (userError || !userData) {
       console.error("User data retrieval error:", userError);
-      return { success: false, error: "Invalid credentials. Please check your mobile number and unique code." };
+      return { success: false, error: "Invalid credentials. Please check your unique code." };
     }
     
     // If language is provided, verify it matches the user's preference
@@ -109,7 +113,8 @@ export const authenticateUser = async (mobileNumber: string, uniqueCode: string,
     }
     
     // Formulate email and password using the specified format
-    const email = `${mobileNumber}@spl.com`;
+    // For backward compatibility, if mobile number is provided use it, otherwise use a placeholder with the unique code
+    const email = mobileNumber ? `${mobileNumber}@spl.com` : `${uniqueCode}@spl.com`;
     const password = `${uniqueCode}@spl`;
     
     console.log("Attempting authentication with:", { email, password });

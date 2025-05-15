@@ -1,600 +1,236 @@
 import { supabase } from "@/integrations/supabase/client";
+import { registerUserAuth } from "./rpc-utils";
+import { v4 as uuidv4 } from 'uuid';
+import { TablesInsert } from "@/integrations/supabase/types";
 
-export const getLanguages = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('languages')
-      .select('*');
-
-    if (error) {
-      console.error("Error fetching languages:", error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error("Error fetching languages:", error);
-    return [];
-  }
-};
-
-export const getUserNotifications = async (uniqueCode: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('unique_code', uniqueCode);
-
-    if (error) {
-      console.error("Error fetching notifications:", error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error("Error fetching notifications:", error);
-    return [];
-  }
-};
-
-export const getUserLanguage = async (uniqueCode: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('user_languages')
-      .select('language')
-      .eq('unique_code', uniqueCode)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching user language:', error);
-      return null;
-    }
-    
-    return data?.language || null;
-  } catch (error) {
-    console.error('Exception fetching user language:', error);
-    return null;
-  }
-};
-
-export const authenticateUser = async (
-  mobileNumber: string, 
-  uniqueCode: string, 
-  selectedLanguage: string
-) => {
-  try {
-    // Check if the user exists with the given mobile and unique code
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('contact_number', mobileNumber)
-      .eq('unique_code', uniqueCode)
-      .single();
-    
-    if (userError || !userData) {
-      console.error('User authentication error:', userError);
-      return { 
-        success: false, 
-        error: 'Invalid mobile number or unique code'
-      };
-    }
-    
-    // Check if user has a language preference
-    const { data: langData, error: langError } = await supabase
-      .from('user_languages')
-      .select('language')
-      .eq('unique_code', uniqueCode)
-      .single();
-    
-    // If user has a language and it's different from selected
-    if (!langError && langData && langData.language !== selectedLanguage) {
-      return {
-        success: false,
-        correctLanguage: langData.language,
-        error: 'Language mismatch'
-      };
-    }
-    
-    // If user doesn't have a language yet, assign the selected one
-    if (langError && !langData) {
-      const { error: insertError } = await supabase
-        .from('user_languages')
-        .insert({
-          unique_code: uniqueCode,
-          language: selectedLanguage
-        });
-      
-      if (insertError) {
-        console.error('Error assigning language:', insertError);
-      }
-    }
-    
-    // Sign in with Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: `${uniqueCode}@example.com`,
-      password: userData.password || uniqueCode // Fallback to uniqueCode if no password
-    });
-    
-    if (authError) {
-      // Try to create the auth user if they don't exist yet
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: `${uniqueCode}@example.com`,
-        password: userData.password || uniqueCode,
-        options: {
-          data: {
-            unique_code: uniqueCode,
-            name: userData.name
-          }
-        }
-      });
-      
-      if (signUpError) {
-        console.error('Auth signup error:', signUpError);
-        return { success: false, error: 'Authentication failed' };
-      }
-      
-      // Successfully created auth user
-      return { 
-        success: true, 
-        profile: userData,
-        language: langData?.language
-      };
-    }
-    
-    // Successfully authenticated
-    return { 
-      success: true, 
-      profile: userData,
-      language: langData?.language
-    };
-    
-  } catch (error) {
-    console.error('Authentication exception:', error);
-    return { success: false, error: 'Authentication failed' };
-  }
-};
-
-export const getAllUsers = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
-    
-    if (error) {
-      console.error('Error fetching users:', error);
-      return [];
-    }
-    
-    // Get the language for each user
-    const usersWithLanguage = await Promise.all(
-      data.map(async (user) => {
-        const language = await getUserLanguage(user.unique_code);
-        return {
-          ...user,
-          languagePreference: language
-        };
-      })
-    );
-    
-    return usersWithLanguage;
-  } catch (error) {
-    console.error('Exception fetching users:', error);
-    return [];
-  }
-};
-
-export const updateUser = async (userId: string, updates: any) => {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
-      .select();
-    
-    if (error) {
-      console.error('Error updating user:', error);
-      return { success: false, error: error.message };
-    }
-    
-    return { success: true, data: data ? data[0] : null };
-  } catch (error) {
-    console.error('Exception updating user:', error);
-    return { success: false, error: 'Failed to update user' };
-  }
-};
-
-export const deleteUser = async (userId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', userId);
-    
-    if (error) {
-      console.error('Error deleting user:', error);
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Exception deleting user:', error);
-    return false;
-  }
-};
-
-export const createRecording = async (
-  unique_code: string,
-  language: string,
-  sentence_index: number,
-  file_path: string,
-  sentence_text: string
-) => {
-  try {
-    const { data, error } = await supabase
-      .from('recordings')
-      .insert([
-        {
-          unique_code,
-          language,
-          sentence_index,
-          file_path,
-          sentence_text
-        },
-      ])
-      .select();
-
-    if (error) {
-      console.error("Error creating recording:", error);
-      return { success: false, error: error.message };
-    }
-
-    // Dispatch a custom event
-    window.dispatchEvent(new Event('recording-updated'));
-
-    return { success: true, data: data ? data[0] : null };
-  } catch (error) {
-    console.error("Error creating recording:", error);
-    return { success: false, error: "Failed to create recording" };
-  }
-};
-
-export const fetchUserRecordings = async (
-  uniqueCode: string,
-  language: string,
-  page = 1,
-  pageSize = 10
-) => {
-  try {
-    // Calculate range for pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    
-    const { data, error, count } = await supabase
-      .from('recordings')
-      .select('*', { count: 'exact' })
-      .eq('unique_code', uniqueCode)
-      .eq('language', language)
-      .order('sentence_index', { ascending: true })
-      .range(from, to);
-    
-    if (error) {
-      console.error('Error fetching recordings:', error);
-      return { recordings: [], count: 0 };
-    }
-    
-    return { recordings: data || [], count: count || 0 };
-  } catch (error) {
-    console.error('Exception fetching recordings:', error);
-    return { recordings: [], count: 0 };
-  }
-};
-
-export const getRecordingCount = async (uniqueCode: string, language: string) => {
-  try {
-    const { count, error } = await supabase
-      .from('recordings')
-      .select('*', { count: 'exact', head: true })
-      .eq('unique_code', uniqueCode)
-      .eq('language', language);
-
-    if (error) {
-      console.error("Error fetching recording count:", error);
-      return 0;
-    }
-
-    return count || 0;
-  } catch (error) {
-    console.error("Error fetching recording count:", error);
-    return 0;
-  }
-};
-
-// Added missing functions
-export const saveUserFeedback = async (userId: string, rating: number, comments: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('feedback')
-      .insert([
-        {
-          unique_code: userId,
-          rating,
-          comments
-        }
-      ])
-      .select();
-
-    if (error) {
-      console.error("Error saving user feedback:", error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, data: data ? data[0] : null };
-  } catch (error) {
-    console.error("Error saving user feedback:", error);
-    return { success: false, error: "Failed to save feedback" };
-  }
-};
-
-export const deleteUserRecordings = async (uniqueCode: string) => {
-  try {
-    const { error } = await supabase
-      .from('recordings')
-      .delete()
-      .eq('unique_code', uniqueCode);
-    
-    if (error) {
-      console.error('Error deleting user recordings:', error);
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Exception deleting user recordings:', error);
-    return false;
-  }
-};
-
-export const getAdminPassword = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('admin_settings')
-      .select('password')
-      .limit(1)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching admin password:', error);
-      return 'admin'; // Default password
-    }
-    
-    return data.password;
-  } catch (error) {
-    console.error('Exception fetching admin password:', error);
-    return 'admin'; // Default password on error
-  }
-};
-
+// Function to save user data to Supabase
 export const saveUser = async (userData: {
   name: string;
   age: number;
   gender: string;
   contactNumber: string;
   language: string;
-}) => {
+}): Promise<any> => {
   try {
-    // Generate unique code (5 characters, alphanumeric)
-    const generateUniqueCode = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let result = '';
-      for (let i = 0; i < 5; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    };
-
-    const uniqueCode = generateUniqueCode();
-    
-    // Check if contact number already exists
-    const { data: existingUser, error: checkError } = await supabase
+    // Check if the contact number is already registered
+    const { data: existingUser } = await supabase
       .from('users')
       .select('*')
-      .eq('contact_number', userData.contactNumber)
-      .limit(1);
-    
-    if (checkError) {
-      console.error('Error checking existing user:', checkError);
-      return null;
-    }
+      .eq('contact_number', userData.contactNumber);
     
     if (existingUser && existingUser.length > 0) {
-      console.error('User with this contact number already exists');
-      return null;
+      return null; // Indicate that the phone number is already registered
     }
     
-    // Insert new user
-    const { data: newUser, error: insertError } = await supabase
+    // Generate a unique code
+    let uniqueCode: string;
+    let isCodeUnique = false;
+    
+    while (!isCodeUnique) {
+      uniqueCode = generateUniqueCode();
+      const { data: existingCode } = await supabase
+        .from('users')
+        .select('*')
+        .eq('unique_code', uniqueCode);
+      
+      if (!existingCode || existingCode.length === 0) {
+        isCodeUnique = true;
+      }
+    }
+    
+    // Insert user data into the 'users' table
+    const { data, error } = await supabase
       .from('users')
-      .insert([{
-        name: userData.name,
-        age: userData.age,
-        gender: userData.gender,
-        contact_number: userData.contactNumber,
-        unique_code: uniqueCode
-      }])
-      .select();
+      .insert<TablesInsert<'users'>>([
+        {
+          name: userData.name,
+          age: userData.age,
+          gender: userData.gender,
+          contact_number: userData.contactNumber,
+          unique_code: uniqueCode
+        }
+      ])
+      .select()
+      .single();
     
-    if (insertError || !newUser || newUser.length === 0) {
-      console.error('Error creating user:', insertError);
+    if (error) {
+      console.error("Error saving user:", error);
       return null;
     }
     
-    // Insert user language preference
-    const { error: langError } = await supabase
-      .from('user_languages')
-      .insert([{
-        unique_code: uniqueCode,
-        language: userData.language
-      }]);
+    // Save user language preference
+    await saveUserLanguage(uniqueCode, userData.language);
     
-    if (langError) {
-      console.error('Error setting language preference:', langError);
-      // Continue anyway, language preference is not critical
-    }
+    // Register user with Supabase Auth
+    await registerUserAuth({
+      mobileNumber: userData.contactNumber,
+      uniqueCode: uniqueCode,
+      name: userData.name
+    });
     
-    return { 
-      ...newUser[0],
-      uniqueCode 
-    };
+    return { uniqueCode: uniqueCode, ...data };
   } catch (error) {
-    console.error('Exception creating user:', error);
+    console.error("Error in saveUser:", error);
     return null;
   }
 };
 
-// Function to save recording metadata
-export const saveRecordingMetadata = async (
-  uniqueCode: string, 
-  language: string,
-  sentenceIndex: number,
-  filePath: string,
-  sentenceText: string,
-  isRerecording: boolean = false
-) => {
+// Function to save user language preference
+export const saveUserLanguage = async (uniqueCode: string, language: string): Promise<boolean> => {
   try {
-    const { data, error } = await supabase
-      .from('recordings')
+    // Insert language preference into the 'user_languages' table
+    const { error } = await supabase
+      .from('user_languages')
       .insert([
         {
           unique_code: uniqueCode,
-          language: language,
-          sentence_index: sentenceIndex,
-          file_path: filePath,
-          sentence_text: sentenceText,
-          needs_rerecording: isRerecording
+          language: language
         }
-      ])
-      .select();
-
+      ]);
+    
     if (error) {
-      console.error("Error saving recording metadata:", error);
-      return { success: false, error: error.message };
+      console.error("Error saving user language:", error);
+      return false;
     }
-
-    return { success: true, data: data ? data[0] : null };
+    
+    return true;
   } catch (error) {
-    console.error("Error saving recording metadata:", error);
-    return { success: false, error: "Failed to save recording metadata" };
+    console.error("Error in saveUserLanguage:", error);
+    return false;
   }
 };
 
-// Function to save recording blob to storage
-export const saveRecordingBlob = async (
-  blob: Blob,
-  filePath: string
-) => {
+// Function to generate a unique 5-character alphanumeric code
+const generateUniqueCode = (): string => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) {
+    code += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return code;
+};
+
+// Function to get languages from Supabase
+export const getLanguages = async (): Promise<any[]> => {
   try {
     const { data, error } = await supabase
-      .storage
-      .from('recordings')
-      .upload(filePath, blob);
-
-    if (error) {
-      console.error("Error saving recording blob:", error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, path: data?.path };
-  } catch (error) {
-    console.error("Error saving recording blob:", error);
-    return { success: false, error: "Failed to save recording blob" };
-  }
-};
-
-// Alias for getRecordingCount to support rerecordings
-export const getRerecordingCount = async (uniqueCode: string, language: string) => {
-  try {
-    const { count, error } = await supabase
-      .from('recordings')
-      .select('*', { count: 'exact', head: true })
-      .eq('unique_code', uniqueCode)
-      .eq('language', language)
-      .eq('needs_rerecording', true);
-
-    if (error) {
-      console.error("Error fetching rerecording count:", error);
-      return 0;
-    }
-
-    return count || 0;
-  } catch (error) {
-    console.error("Error fetching rerecording count:", error);
-    return 0;
-  }
-};
-
-// Implementation of getUserRecordings for compatibility
-export const getUserRecordings = async (uniqueCode: string, language?: string) => {
-  try {
-    let query = supabase
-      .from('recordings')
-      .select('*')
-      .eq('unique_code', uniqueCode);
-      
-    if (language) {
-      query = query.eq('language', language);
-    }
-    
-    const { data, error } = await query;
+      .from('languages')
+      .select('*');
     
     if (error) {
-      console.error('Error fetching user recordings:', error);
+      console.error("Error getting languages:", error);
       return [];
     }
     
     return data || [];
   } catch (error) {
-    console.error('Exception fetching user recordings:', error);
+    console.error("Error in getLanguages:", error);
     return [];
   }
 };
 
-// Add the missing fetchUserLanguages function
-export const fetchUserLanguages = async (userId: string): Promise<string[]> => {
+// Function to get admin password from Supabase
+export const getAdminPassword = async (): Promise<string | null> => {
   try {
-    // First, get the user's unique code using the userId
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('unique_code')
-      .eq('id', userId)
+    const { data, error } = await supabase
+      .from('admin_settings')
+      .select('password')
+      .eq('id', 'admin')
       .single();
     
-    if (userError || !userData) {
-      console.error('Error fetching user:', userError);
-      return [];
+    if (error) {
+      console.error("Error getting admin password:", error);
+      return null;
     }
     
-    const uniqueCode = userData.unique_code;
+    return data?.password || null;
+  } catch (error) {
+    console.error("Error in getAdminPassword:", error);
+    return null;
+  }
+};
+
+// Function to save recording metadata to Supabase
+export const saveRecordingMetadata = async (
+  userId: string,
+  language: string,
+  sentenceIndex: number,
+  filePath: string,
+  sentenceText: string,
+  snr?: number
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('recordings')
+      .insert([
+        {
+          unique_code: userId,
+          language: language,
+          sentence_index: sentenceIndex,
+          file_path: filePath,
+          recording_date: new Date().toISOString(),
+          sentence_text: sentenceText,
+          snr: snr || null
+        }
+      ]);
     
-    // Then fetch the language for this unique code
+    if (error) {
+      console.error("Error saving recording metadata:", error);
+      return false;
+    }
+    
+    // Dispatch a custom event to notify components about the recording update
+    window.dispatchEvent(new Event('recording-updated'));
+    
+    return true;
+  } catch (error) {
+    console.error("Error in saveRecordingMetadata:", error);
+    return false;
+  }
+};
+
+// Function to save recording blob to Supabase storage
+export const saveRecordingBlob = async (blob: Blob, filePath: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase.storage
+      .from('recordings')
+      .upload(filePath, blob, {
+        cacheControl: '3600',
+        upsert: false
+      });
+    
+    if (error) {
+      console.error("Error saving recording:", error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in saveRecording:", error);
+    return false;
+  }
+};
+
+export const fetchUserLanguages = async (userId: string): Promise<string[]> => {
+  try {
     const { data, error } = await supabase
       .from('user_languages')
       .select('language')
-      .eq('unique_code', uniqueCode);
-    
+      .eq('unique_code', userId);
+      
     if (error) {
-      console.error('Error fetching user languages:', error);
+      console.error("Error fetching user languages:", error);
       return [];
     }
     
-    // Return the languages as an array of strings
-    return data?.map(item => item.language) || [];
+    // Extract language names from the data
+    return data.map(item => item.language);
   } catch (error) {
-    console.error('Exception fetching user languages:', error);
+    console.error("Error in fetchUserLanguages:", error);
     return [];
   }
 };
 
-// Add function to fetch sentences for a specific language
 export const fetchSentencesForLanguage = async (language: string) => {
   try {
     const { data, error } = await supabase
@@ -604,13 +240,213 @@ export const fetchSentencesForLanguage = async (language: string) => {
       .order('id', { ascending: true });
     
     if (error) {
-      console.error('Error fetching sentences:', error);
+      console.error("Error fetching sentences:", error);
       return [];
     }
     
     return data || [];
   } catch (error) {
-    console.error('Exception fetching sentences:', error);
+    console.error("Error in fetchSentencesForLanguage:", error);
     return [];
+  }
+};
+
+// Function to get all users from Supabase
+export const getAllUsers = async (): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+    
+    if (error) {
+      console.error("Error getting users:", error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error("Error in getAllUsers:", error);
+    return [];
+  }
+};
+
+export const deleteUserRecordings = async (userId: string): Promise<boolean> => {
+  try {
+    // First get all recordings for this user
+    const { data: recordings } = await supabase
+      .from('recordings')
+      .select('file_path')
+      .eq('unique_code', userId);
+      
+    if (recordings && recordings.length > 0) {
+      // Delete each recording file from storage
+      for (const recording of recordings) {
+        if (recording.file_path) {
+          const { error: storageError } = await supabase
+            .storage
+            .from('recordings')
+            .remove([recording.file_path]);
+            
+          if (storageError) {
+            console.error("Error deleting recording file:", storageError);
+          }
+        }
+      }
+      
+      // Delete the recording metadata from the database
+      const { error: dbError } = await supabase
+        .from('recordings')
+        .delete()
+        .eq('unique_code', userId);
+        
+      if (dbError) {
+        console.error("Error deleting recording metadata:", dbError);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in deleteUserRecordings:", error);
+    return false;
+  }
+};
+
+// Function to add a new language with sentences
+export const addLanguageWithSentences = async (
+  languageName: string, 
+  sentences: string[], 
+  paragraphMode: boolean = false
+): Promise<boolean> => {
+  try {
+    // Process sentences if in paragraph mode
+    const processedSentences = paragraphMode 
+      ? sentences.flatMap(paragraph => paragraph.split(/(?<=\.)\s+/)) // Split paragraphs at sentence endings
+      : sentences;
+    
+    // Insert the new language
+    const { data: languageData, error: languageError } = await supabase
+      .from('languages')
+      .insert({
+        id: Date.now().toString(),
+        name: languageName,
+        sentences: processedSentences,
+        upload_date: new Date().toISOString()
+      })
+      .select();
+      
+    if (languageError) {
+      console.error("Error adding language:", languageError);
+      return false;
+    }
+    
+    // Add each sentence to the sentences table for better querying
+    for (let i = 0; i < processedSentences.length; i++) {
+      const { error: sentenceError } = await supabase
+        .from('sentences')
+        .insert({
+          language: languageName,
+          text: processedSentences[i].trim()
+        });
+        
+      if (sentenceError) {
+        console.error("Error adding sentence:", sentenceError);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in addLanguageWithSentences:", error);
+    return false;
+  }
+};
+
+// Function to get user details with recordings count
+export const getUserWithRecordingsCount = async (userId: string): Promise<any> => {
+  try {
+    // Get user details
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+      
+    if (userError) {
+      console.error("Error fetching user:", userError);
+      return null;
+    }
+    
+    // Count recordings
+    const { count: recordingsCount, error: recordingsError } = await supabase
+      .from('recordings')
+      .select('*', { count: 'exact', head: true })
+      .eq('unique_code', userId);
+      
+    if (recordingsError) {
+      console.error("Error counting recordings:", recordingsError);
+    }
+    
+    return {
+      ...user,
+      recordingsCount: recordingsCount || 0
+    };
+  } catch (error) {
+    console.error("Error in getUserWithRecordingsCount:", error);
+    return null;
+  }
+};
+
+// Function to update admin settings
+export const updateAdminSettings = async (settings: {
+  password?: string;
+  storageType?: string;
+  googleConnected?: boolean;
+  googleEmail?: string | null;
+  googleFolderName?: string | null;
+  autoSync?: boolean;
+}): Promise<boolean> => {
+  try {
+    const updates: {
+      password?: string;
+      storage_type?: string;
+      google_connected?: boolean;
+      google_email?: string | null;
+      google_folder_name?: string | null;
+      auto_sync?: boolean;
+    } = {};
+    
+    if (settings.password) {
+      updates.password = settings.password;
+    }
+    if (settings.storageType) {
+      updates.storage_type = settings.storageType;
+    }
+    if (settings.googleConnected !== undefined) {
+      updates.google_connected = settings.googleConnected;
+    }
+    if (settings.googleEmail !== undefined) {
+      updates.google_email = settings.googleEmail;
+    }
+    if (settings.googleFolderName !== undefined) {
+      updates.google_folder_name = settings.googleFolderName;
+    }
+    if (settings.autoSync !== undefined) {
+      updates.auto_sync = settings.autoSync;
+    }
+    
+    const { error } = await supabase
+      .from('admin_settings')
+      .update(updates)
+      .eq('id', 'admin');
+    
+    if (error) {
+      console.error("Error updating admin settings:", error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in updateAdminSettings:", error);
+    return false;
   }
 };

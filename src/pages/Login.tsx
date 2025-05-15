@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
@@ -8,18 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { authenticateUser, getUserNotifications, getLanguages, getUserLanguage } from "@/lib/utils/supabase-utils";
+import { authenticateUser, getUserNotifications, getLanguages } from "@/lib/utils/supabase-utils";
 import { supabase } from "@/integrations/supabase/client";
+import { motion } from "framer-motion";
 
 const Login: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [mobileNumber, setMobileNumber] = useState("");
   const [uniqueCode, setUniqueCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [languages, setLanguages] = useState<any[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState("");
-  const [isLanguageRequired, setIsLanguageRequired] = useState(true);
   
   // Effect to load languages and check authentication status
   useEffect(() => {
@@ -37,25 +37,14 @@ const Login: React.FC = () => {
         // Get user metadata to extract unique_code
         const unique_code = data.session.user.user_metadata?.unique_code;
         if (unique_code) {
-          // Get user's preferred language
-          const language = await getUserLanguage(unique_code);
-            
-          if (language) {
-            navigate(`/record/${unique_code}/${language}`);
-          } else {
-            toast({
-              title: "Welcome back!",
-              description: "Please select a language to continue recording"
-            });
-          }
+          navigate(`/record/${unique_code}/${selectedLanguage}`);
         }
       }
     };
     
     checkAuth();
-  }, [navigate, toast]);
+  }, [navigate, selectedLanguage]);
 
-  // Add the missing handleLanguageChange function
   const handleLanguageChange = (value: string) => {
     setSelectedLanguage(value);
   };
@@ -63,15 +52,15 @@ const Login: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!mobileNumber || !uniqueCode) {
+    if (!uniqueCode) {
       toast({
-        title: "Please enter all required fields",
+        title: "Please enter your unique code",
         variant: "destructive"
       });
       return;
     }
     
-    if (isLanguageRequired && !selectedLanguage) {
+    if (!selectedLanguage) {
       toast({
         title: "Please select your language",
         description: "Language selection is required for login",
@@ -86,8 +75,8 @@ const Login: React.FC = () => {
       // First clean up any existing auth state
       await supabase.auth.signOut();
       
-      // Try to authenticate
-      const result = await authenticateUser(mobileNumber, uniqueCode, selectedLanguage);
+      // Try to authenticate with just unique code and language (no mobile number required)
+      const result = await authenticateUser("", uniqueCode, selectedLanguage);
       
       if (!result.success) {
         if (result.correctLanguage) {
@@ -135,95 +124,96 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <Layout showBackground={false}>
+      {/* Add a subtle colorful background */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute top-0 left-0 w-64 h-64 bg-blue-500 opacity-10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 right-0 w-80 h-80 bg-purple-500 opacity-10 rounded-full blur-3xl"></div>
+      </div>
+      
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <Card className="w-full max-w-md p-6 shadow-lg animate-fade-in">
-          <div className="mb-6 flex items-center">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="mr-2" 
-              onClick={() => navigate("/")}
-            >
-              <ArrowLeft size={20} />
-            </Button>
-            <h2 className="text-2xl font-bold">Existing User Login</h2>
-          </div>
-          
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="mobileNumber">Mobile Number</Label>
-              <Input 
-                id="mobileNumber" 
-                value={mobileNumber} 
-                onChange={(e) => setMobileNumber(e.target.value)} 
-                placeholder="Enter your mobile number"
-                required
-              />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Card className="w-full max-w-md p-6 shadow-lg">
+            <div className="mb-6 flex items-center">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="mr-2" 
+                onClick={() => navigate("/")}
+              >
+                <ArrowLeft size={20} />
+              </Button>
+              <h2 className="text-2xl font-bold">Returning User Login</h2>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="uniqueCode">Unique Code</Label>
-              <Input 
-                id="uniqueCode" 
-                value={uniqueCode} 
-                onChange={(e) => setUniqueCode(e.target.value.toUpperCase())} 
-                placeholder="Enter your unique code" 
-                maxLength={5}
-                required
-                className="uppercase"
-              />
-              <p className="text-xs text-gray-500">
-                Enter the 5-digit code that was provided during registration
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Language (Required)</Label>
-              <Select onValueChange={handleLanguageChange} value={selectedLanguage} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {languages.length > 0 ? (
-                    languages.map(lang => (
-                      <SelectItem key={lang.id} value={lang.name}>
-                        {lang.name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="no-languages" disabled>
-                      No languages available
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              
-              {languages.length === 0 && (
-                <p className="text-sm text-yellow-600 mt-1">
-                  No languages available. Please contact the administrator.
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="uniqueCode">Unique Code</Label>
+                <Input 
+                  id="uniqueCode" 
+                  value={uniqueCode} 
+                  onChange={(e) => setUniqueCode(e.target.value.toUpperCase())} 
+                  placeholder="Enter your unique code" 
+                  maxLength={5}
+                  required
+                  className="uppercase"
+                />
+                <p className="text-xs text-gray-500">
+                  Enter the 5-digit code that was provided during registration
                 </p>
-              )}
-            </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full mt-6" 
-              disabled={isLoading || (!mobileNumber || !uniqueCode || !selectedLanguage)}
-            >
-              {isLoading ? "Signing In..." : "Sign In"}
-            </Button>
-            
-            <div className="mt-4 text-center">
-              <p className="text-sm text-gray-600">
-                Don't have an account?{" "}
-                <Link to="/register" className="text-blue-600 hover:underline">
-                  Register Here
-                </Link>
-              </p>
-            </div>
-          </form>
-        </Card>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Language (Required)</Label>
+                <Select onValueChange={handleLanguageChange} value={selectedLanguage} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select your language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.length > 0 ? (
+                      languages.map(lang => (
+                        <SelectItem key={lang.id} value={lang.name}>
+                          {lang.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-languages" disabled>
+                        No languages available
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                
+                {languages.length === 0 && (
+                  <p className="text-sm text-yellow-600 mt-1">
+                    No languages available. Please contact the administrator.
+                  </p>
+                )}
+              </div>
+              
+              <Button 
+                type="submit" 
+                className="w-full mt-6 bg-black hover:bg-gray-800 text-white"
+                disabled={isLoading || !uniqueCode || !selectedLanguage}
+              >
+                {isLoading ? "Signing In..." : "Sign In"}
+              </Button>
+              
+              <div className="mt-4 text-center">
+                <p className="text-sm text-gray-600">
+                  Don't have an account?{" "}
+                  <Link to="/register" className="text-blue-600 hover:underline">
+                    Register Here
+                  </Link>
+                </p>
+              </div>
+            </form>
+          </Card>
+        </motion.div>
       </div>
     </Layout>
   );

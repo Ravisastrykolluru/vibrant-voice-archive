@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Layout from "@/components/Layout";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,6 +14,11 @@ import FeedbackForm from "@/components/FeedbackForm";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import AudioWaveform from "@/components/AudioWaveform";
+import UserHeader from "@/components/UserHeader";
+import RecordingControls from "@/components/recording/RecordingControls";
+import SentenceDisplay from "@/components/recording/SentenceDisplay";
+import SentenceNavigation from "@/components/recording/SentenceNavigation";
+import { motion } from "framer-motion";
 
 interface Sentence {
   id: number;
@@ -182,16 +186,28 @@ const RecordingSession = () => {
       description: "Processing your recording...",
     });
 
+    // Create today's date for folder structure
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    // Get user gender (we'd need to query this from the database)
+    const { data: userData } = await supabase
+      .from('users')
+      .select('gender')
+      .eq('unique_code', userId)
+      .single();
+    
+    const gender = userData?.gender || "unknown";
+    
     try {
-      const sentenceIndex = currentSentenceIndex;
-      const sentenceText = sentences[sentenceIndex]?.text || recordedText;
-      
+      // Prepare file path according to the required structure
+      // recordings/YYYY-MM-DD/gender_language_userID/
       await saveRecordingMetadata(
         userId || "", 
         selectedLanguage || "",
-        sentenceIndex,
-        `recording_${userId}_${selectedLanguage}_${sentenceIndex}_${Date.now()}.webm`,
-        sentenceText
+        currentSentenceIndex,
+        `recordings/${dateStr}/${gender}_${selectedLanguage}_${userId}/${gender}_${selectedLanguage}_${userId}_${currentSentenceIndex}.wav`,
+        recordedText
       );
     } catch (error) {
       console.error("Error saving recording metadata:", error);
@@ -238,7 +254,23 @@ const RecordingSession = () => {
     }
 
     const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const filePath = `recordings/${userId}/${selectedLanguage}/${currentSentenceIndex}_${Date.now()}.webm`;
+    
+    // Create today's date for folder structure
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    // Get user gender
+    const { data: userData } = await supabase
+      .from('users')
+      .select('gender')
+      .eq('unique_code', userId)
+      .single();
+    
+    const gender = userData?.gender || "unknown";
+    
+    // Prepare file path according to the required structure
+    // recordings/YYYY-MM-DD/gender_language_userID/
+    const filePath = `recordings/${dateStr}/${gender}_${selectedLanguage}_${userId}/${gender}_${selectedLanguage}_${userId}_${currentSentenceIndex}.wav`;
 
     try {
       await saveRecordingBlob(audioBlob, filePath);
@@ -306,7 +338,13 @@ const RecordingSession = () => {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
-          <p className="text-lg">Loading languages...</p>
+          <motion.div 
+            className="text-lg"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            Loading languages...
+          </motion.div>
         </div>
       </Layout>
     );
@@ -315,10 +353,19 @@ const RecordingSession = () => {
   return (
     <Layout>
       <div className="min-h-screen flex flex-col items-center p-6 relative">
+        {/* User header displaying name and ID */}
+        <div className="w-full max-w-4xl mb-6">
+          {userId && <UserHeader userId={userId} />}
+        </div>
+
         <div className="w-full max-w-4xl text-center space-y-6 relative z-10">
-          <h1 className="text-3xl md:text-4xl font-bold animate-fade-in">
+          <motion.h1 
+            className="text-3xl md:text-4xl font-bold"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
             Recording Session
-          </h1>
+          </motion.h1>
 
           <div className="flex items-center justify-center space-x-4 animate-fade-in">
             <Label htmlFor="language" className="text-sm font-medium">
@@ -340,7 +387,13 @@ const RecordingSession = () => {
 
           {isLoadingSentences ? (
             <div className="text-center py-8">
-              <p className="text-lg">Loading sentences...</p>
+              <motion.p 
+                className="text-lg"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                Loading sentences...
+              </motion.p>
             </div>
           ) : sentences.length === 0 ? (
             <div className="text-center py-8">
@@ -350,66 +403,51 @@ const RecordingSession = () => {
               </Card>
             </div>
           ) : (
-            <>
-              <div className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 mb-4">
-                <Label className="block text-sm font-medium text-gray-700 mb-2">
-                  Sentence {currentSentenceIndex + 1} of {sentences.length}:
-                </Label>
-                <p className="text-xl font-medium">{recordedText}</p>
-              </div>
+            <motion.div 
+              className="w-full space-y-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              {/* Sentence display component */}
+              <SentenceDisplay 
+                currentText={recordedText} 
+                currentIndex={currentSentenceIndex} 
+                totalCount={sentences.length} 
+              />
 
-              <div className="flex flex-col md:flex-row gap-4 justify-center pt-4 animate-fade-in">
-                <Button
-                  onClick={startRecording}
-                  disabled={isRecording}
-                  className="px-6 py-3"
-                >
-                  {isRecording ? "Recording..." : "Start Recording"}
-                </Button>
+              {/* Recording controls */}
+              <RecordingControls 
+                isRecording={isRecording}
+                recordingStatus={recordingStatus}
+                onStartRecording={startRecording}
+                onStopRecording={stopRecording}
+                onPlayRecording={playRecording}
+                onSaveRecording={handleSave}
+              />
 
-                <Button
-                  onClick={stopRecording}
-                  disabled={!isRecording && recordingStatus !== "recording"}
-                  className="px-6 py-3"
-                >
-                  Stop Recording
-                </Button>
-
-                <Button onClick={playRecording} className="px-6 py-3">
-                  Play Recording
-                </Button>
-
-                <Button onClick={handleSave} className="px-6 py-3">
-                  Save Recording
-                </Button>
-              </div>
-
+              {/* Audio visualization */}
               {audioBlob && (
-                <div className="w-full mt-4 animate-fade-in">
+                <motion.div 
+                  className="w-full mt-4"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                >
                   <AudioWaveform audioBlob={audioBlob} playing={false} />
-                </div>
+                </motion.div>
               )}
               
-              <audio ref={audioRef} controls className="w-full mt-4 animate-fade-in hidden" />
+              <audio ref={audioRef} controls className="w-full mt-4 hidden" />
 
-              <div className="flex justify-between mt-6">
-                <Button 
-                  onClick={handlePreviousSentence} 
-                  disabled={currentSentenceIndex === 0}
-                  variant="outline"
-                >
-                  Previous Sentence
-                </Button>
-                <Button 
-                  onClick={handleNextSentence}
-                  disabled={currentSentenceIndex === sentences.length - 1}
-                  variant="outline"
-                >
-                  Next Sentence
-                </Button>
-              </div>
+              {/* Sentence navigation */}
+              <SentenceNavigation 
+                currentIndex={currentSentenceIndex}
+                totalCount={sentences.length}
+                onPrevious={handlePreviousSentence}
+                onNext={handleNextSentence}
+              />
 
-              <div className="w-full animate-fade-in mt-6">
+              <div className="w-full mt-6">
                 <Label htmlFor="recordedText" className="block text-left text-sm font-medium">
                   Edit Text (if needed):
                 </Label>
@@ -421,7 +459,7 @@ const RecordingSession = () => {
                   className="mt-2"
                 />
               </div>
-            </>
+            </motion.div>
           )}
         </div>
 
