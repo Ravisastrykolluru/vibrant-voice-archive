@@ -1,5 +1,6 @@
 
-import { useToast } from "@/hooks/use-toast";
+import * as React from "react";
+import { useToast, setGlobalDispatch } from "@/hooks/use-toast";
 import {
   Toast,
   ToastClose,
@@ -10,7 +11,13 @@ import {
 } from "@/components/ui/toast";
 
 export function Toaster() {
-  const { toasts } = useToast();
+  const { toasts, dismiss } = useToast();
+
+  // Set the global dispatch for standalone toast function
+  React.useEffect(() => {
+    const { dispatch } = useToast();
+    setGlobalDispatch(dispatch);
+  }, []);
 
   return (
     <ToastProvider>
