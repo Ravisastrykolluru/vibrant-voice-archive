@@ -75,90 +75,6 @@ export const updateUserPassword = async (uniqueCode: string, password: string): 
   }
 };
 
-// Authentication Functions
-export const authenticateUser = async (mobileNumber: string, uniqueCode: string, language: string = ""): Promise<any> => {
-  try {
-    // Modified to allow authentication with just uniqueCode and language
-    const whereClause = mobileNumber 
-      ? { unique_code: uniqueCode, contact_number: mobileNumber }
-      : { unique_code: uniqueCode };
-    
-    // First, check if the user exists with the given unique code (and mobile number if provided)
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .match(whereClause)
-      .single();
-      
-    if (userError || !userData) {
-      console.error("User data retrieval error:", userError);
-      return { success: false, error: "Invalid credentials. Please check your unique code." };
-    }
-    
-    // If language is provided, verify it matches the user's preference
-    if (language) {
-      const { data: langData } = await supabase
-        .from('user_languages')
-        .select('language')
-        .eq('unique_code', uniqueCode)
-        .single();
-        
-      if (langData && langData.language !== language) {
-        return { 
-          success: false, 
-          error: "Selected language doesn't match your registered language preference.",
-          correctLanguage: langData.language
-        };
-      }
-    }
-    
-    // Formulate email and password using the specified format
-    // For backward compatibility, if mobile number is provided use it, otherwise use a placeholder with the unique code
-    const email = mobileNumber ? `${mobileNumber}@spl.com` : `${uniqueCode}@spl.com`;
-    const password = `${uniqueCode}@spl`;
-    
-    console.log("Attempting authentication with:", { email, password });
-    
-    // Try to sign in with Supabase auth
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
-    if (error) {
-      console.error("Authentication error:", error);
-      return { success: false, error: error.message };
-    }
-    
-    return { 
-      success: true, 
-      user: data.user, 
-      session: data.session, 
-      profile: userData,
-      language: language || (await getUserLanguage(uniqueCode))
-    };
-  } catch (error) {
-    console.error("Error in authenticateUser:", error);
-    return { success: false, error: "Authentication failed" };
-  }
-};
-
-// Helper function to get user's language preference
-export const getUserLanguage = async (uniqueCode: string): Promise<string | null> => {
-  try {
-    const { data } = await supabase
-      .from('user_languages')
-      .select('language')
-      .eq('unique_code', uniqueCode)
-      .single();
-      
-    return data?.language || null;
-  } catch (error) {
-    console.error("Error getting user language:", error);
-    return null;
-  }
-};
-
 // Register user with Supabase Auth
 export const registerUserAuth = async (userData: {
   mobileNumber: string, 
@@ -198,3 +114,4 @@ export const sendRerecordingNotification = async (uniqueCode: string, sentence: 
   const message = `You need to re-record the following sentence: "${sentence.substring(0, 50)}${sentence.length > 50 ? '...' : ''}"`;
   await addNotification(uniqueCode, message);
 };
+

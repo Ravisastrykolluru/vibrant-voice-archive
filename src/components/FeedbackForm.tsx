@@ -1,117 +1,107 @@
 
 import React, { useState } from "react";
-import { Star, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { saveUserFeedback } from "@/lib/utils/supabase-utils";
-import { useToast } from "@/hooks/use-toast";
 
 interface FeedbackFormProps {
-  userId: string;
-  onComplete: () => void;
+  uniqueCode: string;
+  onSubmit?: () => void;
 }
 
-const FeedbackForm: React.FC<FeedbackFormProps> = ({ userId, onComplete }) => {
-  const { toast } = useToast();
+const FeedbackForm: React.FC<FeedbackFormProps> = ({ uniqueCode, onSubmit }) => {
   const [rating, setRating] = useState<number>(0);
-  const [hoveredRating, setHoveredRating] = useState<number>(0);
-  const [comments, setComments] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [comments, setComments] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submitted, setSubmitted] = useState<boolean>(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (rating === 0) {
-      toast({
-        title: "Please select a rating",
-        variant: "destructive"
-      });
+      alert("Please select a rating");
       return;
     }
-
+    
     setIsSubmitting(true);
     
     try {
-      await saveUserFeedback(userId, rating, comments);
+      const success = await saveUserFeedback(uniqueCode, rating, comments);
       
-      toast({
-        title: "Thank You for Your Feedback!",
-        description: "Your feedback helps us improve our system."
-      });
-      
-      onComplete();
-      
+      if (success) {
+        setSubmitted(true);
+        if (onSubmit) onSubmit();
+      } else {
+        alert("Failed to submit feedback. Please try again.");
+      }
     } catch (error) {
-      console.error("Error saving feedback:", error);
-      toast({
-        title: "Error Saving Feedback",
-        description: "Please try again later.",
-        variant: "destructive"
-      });
-      
+      console.error("Error submitting feedback:", error);
+      alert("An error occurred while submitting feedback.");
+    } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSkip = () => {
-    toast({
-      title: "Feedback Skipped",
-      description: "You can always provide feedback later."
-    });
-    onComplete();
-  };
-
-  return (
-    <div className="w-full max-w-md mx-auto bg-white p-6 rounded-xl shadow-lg">
-      <h2 className="text-xl font-bold mb-4 text-center">How was your experience?</h2>
-      
-      <div className="flex justify-center my-6">
+  const StarRating = () => {
+    return (
+      <div className="flex gap-2">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
             type="button"
-            className="mx-1 focus:outline-none"
+            className={`text-2xl ${star <= rating ? 'text-yellow-500' : 'text-gray-300'}`}
             onClick={() => setRating(star)}
-            onMouseEnter={() => setHoveredRating(star)}
-            onMouseLeave={() => setHoveredRating(0)}
           >
-            <Star
-              size={36}
-              fill={(hoveredRating || rating) >= star ? "#FFD700" : "none"}
-              color={(hoveredRating || rating) >= star ? "#FFD700" : "#CBD5E1"}
-            />
+            ★
           </button>
         ))}
       </div>
-      
-      <div className="mb-6">
-        <label className="flex items-center text-sm text-gray-600 mb-2">
-          <MessageSquare size={16} className="mr-2" />
-          Additional comments (optional)
-        </label>
-        <Textarea
-          placeholder="Tell us what you liked or how we can improve..."
-          value={comments}
-          onChange={(e) => setComments(e.target.value)}
-          rows={4}
-        />
-      </div>
-      
-      <div className="flex justify-between">
-        <Button
-          variant="outline"
-          onClick={handleSkip}
-          disabled={isSubmitting}
-        >
-          Skip
-        </Button>
+    );
+  };
+
+  if (submitted) {
+    return (
+      <Card className="p-6 text-center">
+        <h3 className="text-xl font-bold mb-4">Thank You!</h3>
+        <p>Your feedback has been submitted successfully.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-6">
+      <h3 className="text-xl font-bold mb-4">Share Your Feedback</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <Label htmlFor="rating">How would you rate your experience?</Label>
+          <div className="mt-2">
+            <StarRating />
+          </div>
+        </div>
         
-        <Button
-          onClick={handleSubmit}
-          disabled={isSubmitting}
+        <div>
+          <Label htmlFor="comments">Comments (Optional)</Label>
+          <Textarea
+            id="comments"
+            placeholder="Share your thoughts..."
+            value={comments}
+            onChange={(e) => setComments(e.target.value)}
+            rows={4}
+            className="mt-1"
+          />
+        </div>
+        
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={isSubmitting || rating === 0}
         >
           {isSubmitting ? "Submitting..." : "Submit Feedback"}
         </Button>
-      </div>
-    </div>
+      </form>
+    </Card>
   );
 };
 

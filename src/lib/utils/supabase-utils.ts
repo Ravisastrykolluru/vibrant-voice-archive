@@ -450,3 +450,154 @@ export const updateAdminSettings = async (settings: {
     return false;
   }
 };
+
+// Function to authenticate a user by unique code and language
+export const authenticateUser = async (mobileNumber: string, uniqueCode: string, language: string = ""): Promise<any> => {
+  try {
+    // Modified to allow authentication with just uniqueCode and language
+    const whereClause = mobileNumber 
+      ? { unique_code: uniqueCode, contact_number: mobileNumber }
+      : { unique_code: uniqueCode };
+    
+    // First, check if the user exists with the given unique code (and mobile number if provided)
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .match(whereClause)
+      .single();
+      
+    if (userError || !userData) {
+      console.error("User data retrieval error:", userError);
+      return { success: false, error: "Invalid credentials. Please check your unique code." };
+    }
+    
+    // If language is provided, verify it matches the user's preference
+    if (language) {
+      const { data: langData } = await supabase
+        .from('user_languages')
+        .select('language')
+        .eq('unique_code', uniqueCode)
+        .single();
+        
+      if (langData && langData.language !== language) {
+        return { 
+          success: false, 
+          error: "Selected language doesn't match your registered language preference.",
+          correctLanguage: langData.language
+        };
+      }
+    }
+    
+    // Formulate email and password using the specified format
+    // For backward compatibility, if mobile number is provided use it, otherwise use a placeholder with the unique code
+    const email = mobileNumber ? `${mobileNumber}@spl.com` : `${uniqueCode}@spl.com`;
+    const password = `${uniqueCode}@spl`;
+    
+    console.log("Attempting authentication with:", { email, password });
+    
+    // Try to sign in with Supabase auth
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    if (error) {
+      console.error("Authentication error:", error);
+      return { success: false, error: error.message };
+    }
+    
+    return { 
+      success: true, 
+      user: data.user, 
+      session: data.session, 
+      profile: userData,
+      language: language || (await getUserLanguage(uniqueCode))
+    };
+  } catch (error) {
+    console.error("Error in authenticateUser:", error);
+    return { success: false, error: "Authentication failed" };
+  }
+};
+
+// Function to get user's language preference
+export const getUserLanguage = async (uniqueCode: string): Promise<string | null> => {
+  try {
+    const { data } = await supabase
+      .from('user_languages')
+      .select('language')
+      .eq('unique_code', uniqueCode)
+      .single();
+      
+    return data?.language || null;
+  } catch (error) {
+    console.error("Error getting user language:", error);
+    return null;
+  }
+};
+
+// Function to get user notifications
+export const getUserNotifications = async (uniqueCode: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .order('created_at', { ascending: false });
+    
+    if (error || !data) {
+      console.error("Error getting notifications:", error);
+      return [];
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error in getUserNotifications:", error);
+    return [];
+  }
+};
+
+// Function to save user feedback
+export const saveUserFeedback = async (uniqueCode: string, rating: number, comments?: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('feedback')
+      .insert([
+        {
+          unique_code: uniqueCode,
+          rating: rating,
+          comments: comments || null
+        }
+      ]);
+    
+    if (error) {
+      console.error("Error saving feedback:", error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in saveUserFeedback:", error);
+    return false;
+  }
+};
+
+// Function to get user recordings
+export const getUserRecordings = async (uniqueCode: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .order('sentence_index', { ascending: true });
+    
+    if (error || !data) {
+      console.error("Error getting recordings:", error);
+      return [];
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error in getUserRecordings:", error);
+    return [];
+  }
+};
