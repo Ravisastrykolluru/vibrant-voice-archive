@@ -3,6 +3,31 @@ import { registerUserAuth } from "./rpc-utils";
 import { v4 as uuidv4 } from 'uuid';
 import { TablesInsert } from "@/integrations/supabase/types";
 
+// Define an explicit interface for our user data structure
+interface UserData {
+  id?: string;
+  name?: string;
+  unique_code?: string;
+  created_at?: string;
+  password?: string | null;
+  age?: number;
+  gender?: string;
+  contact_number?: string;
+}
+
+// Define the return type explicitly to avoid deep instantiation
+interface UserWithRecordingsCount {
+  recordingsCount: number;
+  name?: string | undefined;
+  unique_code?: string | undefined;
+  created_at?: string | undefined;
+  password?: string | null | undefined;
+  age?: number | undefined;
+  gender?: string | undefined;
+  contact_number?: string | undefined;
+  id?: string | undefined;
+}
+
 // Function to save user data to Supabase
 export const saveUser = async (userData: {
   name: string;
@@ -362,22 +387,12 @@ export const addLanguageWithSentences = async (
 };
 
 // Function with completely explicit return type to avoid infinite type instantiation
-export const getUserWithRecordingsCount = async (userId: string): Promise<{
-  recordingsCount: number;
-  name: string | undefined;
-  unique_code: string | undefined;
-  created_at: string | undefined;
-  password: string | null | undefined;
-  age: number | undefined;
-  gender: string | undefined;
-  contact_number: string | undefined;
-  id: string | undefined;
-}> => {
+export const getUserWithRecordingsCount = async (userId: string): Promise<UserWithRecordingsCount> => {
   try {
     // Get user details
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('*')
+      .select('id, name, unique_code, created_at, password, age, gender, contact_number')
       .eq('user_id', userId)
       .single();
       
@@ -505,7 +520,10 @@ export const authenticateUser = async (mobileNumber: string, uniqueCode: string,
       
     if (userError || !userData) {
       console.error("User data retrieval error:", userError);
-      return { success: false, error: "Invalid credentials. Please check your unique code." };
+      return { 
+        success: false, 
+        error: "Invalid credentials. Please check your unique code." 
+      };
     }
     
     // If language is provided, verify it matches the user's preference
