@@ -18,6 +18,7 @@ import RecordingControls from "@/components/recording/RecordingControls";
 import SentenceDisplay from "@/components/recording/SentenceDisplay";
 import SentenceNavigation from "@/components/recording/SentenceNavigation";
 import { motion } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Sentence {
   id: number;
