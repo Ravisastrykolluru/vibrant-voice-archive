@@ -147,6 +147,30 @@ export type Database = {
         }
         Relationships: []
       }
+      sentences: {
+        Row: {
+          created_at: string | null
+          id: number
+          language: string
+          text: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          language: string
+          text: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          language?: string
+          text?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_languages: {
         Row: {
           created_at: string

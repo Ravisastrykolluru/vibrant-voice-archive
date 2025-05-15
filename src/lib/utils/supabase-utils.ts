@@ -599,7 +599,7 @@ export const fetchSentencesForLanguage = async (language: string) => {
   try {
     const { data, error } = await supabase
       .from('sentences')
-      .select('*')
+      .select('id, text, language')
       .eq('language', language)
       .order('id', { ascending: true });
     

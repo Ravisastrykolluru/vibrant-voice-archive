@@ -14,6 +14,7 @@ import {
 import FeedbackForm from "@/components/FeedbackForm";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
+import AudioWaveform from "@/components/AudioWaveform";
 
 interface Sentence {
   id: number;
@@ -39,6 +40,7 @@ const RecordingSession = () => {
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
   const [isLoadingSentences, setIsLoadingSentences] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
   // Fetch languages and validate current language
   useEffect(() => {
@@ -212,6 +214,7 @@ const RecordingSession = () => {
     }
 
     const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+    setAudioBlob(audioBlob);
     const audioUrl = URL.createObjectURL(audioBlob);
     audioRef.current.src = audioUrl;
     audioRef.current.play();
@@ -235,8 +238,7 @@ const RecordingSession = () => {
     }
 
     const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const sentenceIndex = currentSentenceIndex;
-    const filePath = `recordings/${userId}/${selectedLanguage}/${sentenceIndex}_${Date.now()}.webm`;
+    const filePath = `recordings/${userId}/${selectedLanguage}/${currentSentenceIndex}_${Date.now()}.webm`;
 
     try {
       await saveRecordingBlob(audioBlob, filePath);
@@ -253,6 +255,7 @@ const RecordingSession = () => {
           return newIndex;
         });
         setAudioChunks([]);
+        setAudioBlob(null);
         setRecordingStatus("idle");
       } else {
         // If this was the last sentence, show the feedback form
@@ -276,6 +279,7 @@ const RecordingSession = () => {
         return newIndex;
       });
       setAudioChunks([]);
+      setAudioBlob(null);
       setRecordingStatus("idle");
     }
   };
@@ -288,6 +292,7 @@ const RecordingSession = () => {
         return newIndex;
       });
       setAudioChunks([]);
+      setAudioBlob(null);
       setRecordingStatus("idle");
     }
   };
@@ -301,7 +306,7 @@ const RecordingSession = () => {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
-          <p>Loading languages...</p>
+          <p className="text-lg">Loading languages...</p>
         </div>
       </Layout>
     );
@@ -335,7 +340,7 @@ const RecordingSession = () => {
 
           {isLoadingSentences ? (
             <div className="text-center py-8">
-              <p>Loading sentences...</p>
+              <p className="text-lg">Loading sentences...</p>
             </div>
           ) : sentences.length === 0 ? (
             <div className="text-center py-8">
@@ -379,7 +384,13 @@ const RecordingSession = () => {
                 </Button>
               </div>
 
-              <audio ref={audioRef} controls className="w-full mt-4 animate-fade-in" />
+              {audioBlob && (
+                <div className="w-full mt-4 animate-fade-in">
+                  <AudioWaveform audioBlob={audioBlob} playing={false} />
+                </div>
+              )}
+              
+              <audio ref={audioRef} controls className="w-full mt-4 animate-fade-in hidden" />
 
               <div className="flex justify-between mt-6">
                 <Button 
