@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
@@ -55,6 +54,11 @@ const Login: React.FC = () => {
     
     checkAuth();
   }, [navigate, toast]);
+
+  // Add the missing handleLanguageChange function
+  const handleLanguageChange = (value: string) => {
+    setSelectedLanguage(value);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
