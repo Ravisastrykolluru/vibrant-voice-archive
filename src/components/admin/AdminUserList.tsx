@@ -45,7 +45,6 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users: initialUsers }) =>
   // Filter users based on search term
   const filteredUsers = users.filter(user => 
     user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.user_id?.includes(searchTerm) ||
     user.unique_code?.includes(searchTerm.toUpperCase())
   );
   
@@ -58,12 +57,18 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users: initialUsers }) =>
     // Refresh the list when returning from details view
     setRefreshTrigger(prev => prev + 1);
   };
+
+  const handleUserUpdated = () => {
+    // Refresh the list when a user is updated
+    setRefreshTrigger(prev => prev + 1);
+  };
   
   if (selectedUser) {
     return (
       <AdminUserDetails 
         user={selectedUser} 
-        onBack={handleBackToList} 
+        onBack={handleBackToList}
+        onUserUpdated={handleUserUpdated}
       />
     );
   }
@@ -74,7 +79,7 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users: initialUsers }) =>
         <h2 className="text-xl font-semibold">Registered Users</h2>
         <div className="w-72">
           <Input
-            placeholder="Search by name, ID or unique code..."
+            placeholder="Search by name or unique code..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -87,7 +92,6 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users: initialUsers }) =>
             <TableHeader>
               <TableRow>
                 <TableHead>Unique Code</TableHead>
-                <TableHead>User ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Age</TableHead>
                 <TableHead>Gender</TableHead>
@@ -99,15 +103,14 @@ const AdminUserList: React.FC<AdminUserListProps> = ({ users: initialUsers }) =>
             </TableHeader>
             <TableBody>
               {filteredUsers.map(user => (
-                <TableRow key={user.id || user.user_id}>
+                <TableRow key={user.id || user.unique_code}>
                   <TableCell>
                     <Badge variant="outline">{user.unique_code || 'N/A'}</Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{user.user_id}</TableCell>
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.age}</TableCell>
                   <TableCell className="capitalize">{user.gender}</TableCell>
-                  <TableCell>{user.language || 'Not assigned'}</TableCell>
+                  <TableCell>{user.languagePreference || 'Not assigned'}</TableCell>
                   <TableCell>{user.contact_number}</TableCell>
                   <TableCell>
                     {user.created_at ? 

@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 // Notifications Functions
@@ -75,8 +76,38 @@ export const updateUserPassword = async (uniqueCode: string, password: string): 
 };
 
 // Authentication Functions
-export const authenticateUser = async (mobileNumber: string, uniqueCode: string): Promise<any> => {
+export const authenticateUser = async (mobileNumber: string, uniqueCode: string, language: string = ""): Promise<any> => {
   try {
+    // First, check if the user exists with the given mobile number and unique code
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .eq('contact_number', mobileNumber)
+      .single();
+      
+    if (userError || !userData) {
+      console.error("User data retrieval error:", userError);
+      return { success: false, error: "Invalid credentials. Please check your mobile number and unique code." };
+    }
+    
+    // If language is provided, verify it matches the user's preference
+    if (language) {
+      const { data: langData } = await supabase
+        .from('user_languages')
+        .select('language')
+        .eq('unique_code', uniqueCode)
+        .single();
+        
+      if (langData && langData.language !== language) {
+        return { 
+          success: false, 
+          error: "Selected language doesn't match your registered language preference.",
+          correctLanguage: langData.language
+        };
+      }
+    }
+    
     // Formulate email and password using the specified format
     const email = `${mobileNumber}@spl.com`;
     const password = `${uniqueCode}@spl`;
@@ -94,22 +125,32 @@ export const authenticateUser = async (mobileNumber: string, uniqueCode: string)
       return { success: false, error: error.message };
     }
     
-    // Get user profile from users table using unique_code
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('unique_code', uniqueCode)
-      .single();
-      
-    if (userError || !userData) {
-      console.error("User data retrieval error:", userError);
-      return { success: false, error: "User profile not found" };
-    }
-    
-    return { success: true, user: data.user, session: data.session, profile: userData };
+    return { 
+      success: true, 
+      user: data.user, 
+      session: data.session, 
+      profile: userData,
+      language: language || (await getUserLanguage(uniqueCode))
+    };
   } catch (error) {
     console.error("Error in authenticateUser:", error);
     return { success: false, error: "Authentication failed" };
+  }
+};
+
+// Helper function to get user's language preference
+export const getUserLanguage = async (uniqueCode: string): Promise<string | null> => {
+  try {
+    const { data } = await supabase
+      .from('user_languages')
+      .select('language')
+      .eq('unique_code', uniqueCode)
+      .single();
+      
+    return data?.language || null;
+  } catch (error) {
+    console.error("Error getting user language:", error);
+    return null;
   }
 };
 

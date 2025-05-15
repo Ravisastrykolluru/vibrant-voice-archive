@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import Layout from "@/components/Layout";
@@ -8,8 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/components/ui/use-toast";
-import { authenticateUser, getUserNotifications, getLanguages } from "@/lib/utils/supabase-utils";
+import { useToast } from "@/hooks/use-toast";
+import { authenticateUser, getUserNotifications, getLanguages, getUserLanguage } from "@/lib/utils/supabase-utils";
 import { supabase } from "@/integrations/supabase/client";
 
 const Login: React.FC = () => {
@@ -20,8 +20,10 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [languages, setLanguages] = useState<any[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [isLanguageRequired, setIsLanguageRequired] = useState(true);
   
-  React.useEffect(() => {
+  // Effect to load languages and check authentication status
+  useEffect(() => {
     const loadLanguages = async () => {
       const langs = await getLanguages();
       setLanguages(langs);
@@ -37,14 +39,10 @@ const Login: React.FC = () => {
         const unique_code = data.session.user.user_metadata?.unique_code;
         if (unique_code) {
           // Get user's preferred language
-          const { data: profileData } = await supabase
-            .from('user_languages')
-            .select('language')
-            .eq('unique_code', unique_code)
-            .single();
+          const language = await getUserLanguage(unique_code);
             
-          if (profileData?.language) {
-            navigate(`/record/${unique_code}/${profileData.language}`);
+          if (language) {
+            navigate(`/record/${unique_code}/${language}`);
           } else {
             toast({
               title: "Welcome back!",
@@ -63,7 +61,16 @@ const Login: React.FC = () => {
     
     if (!mobileNumber || !uniqueCode) {
       toast({
-        title: "Please enter all fields",
+        title: "Please enter all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (isLanguageRequired && !selectedLanguage) {
+      toast({
+        title: "Please select your language",
+        description: "Language selection is required for login",
         variant: "destructive"
       });
       return;
@@ -76,56 +83,39 @@ const Login: React.FC = () => {
       await supabase.auth.signOut();
       
       // Try to authenticate
-      const result = await authenticateUser(mobileNumber, uniqueCode);
+      const result = await authenticateUser(mobileNumber, uniqueCode, selectedLanguage);
       
       if (!result.success) {
-        toast({
-          title: "Authentication Failed",
-          description: result.error || "Invalid credentials",
-          variant: "destructive"
-        });
+        if (result.correctLanguage) {
+          toast({
+            title: "Language Mismatch",
+            description: `Your registered language is ${result.correctLanguage}. Please select that language.`,
+            variant: "destructive"
+          });
+          setSelectedLanguage(result.correctLanguage);
+        } else {
+          toast({
+            title: "Authentication Failed",
+            description: result.error || "Invalid credentials",
+            variant: "destructive"
+          });
+        }
         setIsLoading(false);
         return;
       }
       
       // Get user profile
-      const { profile } = result;
+      const { profile, language } = result;
       
       // Load notifications
       await getUserNotifications(profile.unique_code);
       
-      // If user profile was found, check if a language is selected
-      if (!selectedLanguage) {
-        // Get user's preferred language
-        const { data: langData } = await supabase
-          .from('user_languages')
-          .select('language')
-          .eq('unique_code', profile.unique_code)
-          .single();
-          
-        if (langData?.language) {
-          setSelectedLanguage(langData.language);
-          
-          // Navigate to recording page with user's preferred language
-          setTimeout(() => {
-            navigate(`/record/${profile.unique_code}/${langData.language}`);
-            setIsLoading(false);
-          }, 500);
-          return;
-        } else {
-          // If no language preference found, show language selection
-          toast({
-            title: "Please Select a Language",
-            description: "Please choose a language to continue recording"
-          });
-          setIsLoading(false);
-          return;
-        }
-      }
+      // Use the language from the authentication result or the selected language
+      const userLanguage = language || selectedLanguage;
       
-      // If a language is selected, navigate to recording page
+      // Navigate to recording page with the language
       setTimeout(() => {
-        navigate(`/record/${profile.unique_code}/${selectedLanguage}`);
+        navigate(`/record/${profile.unique_code}/${userLanguage}?mode=regular`);
         setIsLoading(false);
       }, 500);
       
@@ -138,10 +128,6 @@ const Login: React.FC = () => {
       });
       setIsLoading(false);
     }
-  };
-
-  const handleLanguageChange = (language: string) => {
-    setSelectedLanguage(language);
   };
 
   return (
@@ -189,10 +175,10 @@ const Login: React.FC = () => {
             </div>
             
             <div className="space-y-2">
-              <Label>Language (Optional)</Label>
-              <Select onValueChange={handleLanguageChange} value={selectedLanguage}>
+              <Label>Language (Required)</Label>
+              <Select onValueChange={handleLanguageChange} value={selectedLanguage} required>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a language" />
+                  <SelectValue placeholder="Select your language" />
                 </SelectTrigger>
                 <SelectContent>
                   {languages.length > 0 ? (
@@ -219,7 +205,7 @@ const Login: React.FC = () => {
             <Button 
               type="submit" 
               className="w-full mt-6" 
-              disabled={isLoading || (!mobileNumber || !uniqueCode)}
+              disabled={isLoading || (!mobileNumber || !uniqueCode || !selectedLanguage)}
             >
               {isLoading ? "Signing In..." : "Sign In"}
             </Button>

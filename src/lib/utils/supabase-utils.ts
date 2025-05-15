@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 import { 
@@ -7,20 +8,9 @@ import {
   updateUserPassword, 
   authenticateUser,
   registerUserAuth,
-  sendRerecordingNotification
+  sendRerecordingNotification,
+  getUserLanguage
 } from "./rpc-utils";
-
-// Define an extended user type to accommodate additional properties
-interface ExtendedUser {
-  age: number;
-  contact_number: string;
-  created_at: string;
-  gender: string;
-  id: string;
-  name: string;
-  password: string | null;
-  unique_code: string;
-}
 
 // Re-export notification and user password functions
 export { 
@@ -30,7 +20,8 @@ export {
   updateUserPassword, 
   authenticateUser,
   registerUserAuth,
-  sendRerecordingNotification 
+  sendRerecordingNotification,
+  getUserLanguage
 };
 
 // Generate a unique 5-digit alphanumeric code
@@ -117,32 +108,17 @@ export const saveUser = async (userData: {
   return { uniqueCode };
 };
 
-export const findUserByCodeAndName = async (code: string, name: string): Promise<any> => {
+export const findUserByCode = async (code: string): Promise<any> => {
   const { data: users, error } = await supabase
     .from('users')
     .select('*')
-    .eq('unique_code', code)
-    .eq('name', name);
+    .eq('unique_code', code);
     
   if (error || !users || users.length === 0) {
     return null;
   }
   
   return users[0];
-};
-
-export const getUserLanguage = async (uniqueCode: string): Promise<string | null> => {
-  const { data, error } = await supabase
-    .from('user_languages')
-    .select('language')
-    .eq('unique_code', uniqueCode)
-    .single();
-    
-  if (error || !data) {
-    return null;
-  }
-  
-  return data.language;
 };
 
 // Language Functions
@@ -221,7 +197,7 @@ export const markForRerecording = async (uniqueCode: string, language: string, s
     // Get the sentence text first
     const { data: recordingData } = await supabase
       .from('recordings')
-      .select('sentence_text')
+      .select('sentence_text, file_path')
       .eq('unique_code', uniqueCode)
       .eq('language', language)
       .eq('sentence_index', sentenceIndex)
@@ -234,6 +210,13 @@ export const markForRerecording = async (uniqueCode: string, language: string, s
       .eq('unique_code', uniqueCode)
       .eq('language', language)
       .eq('sentence_index', sentenceIndex);
+    
+    // Delete the original recording file if it exists
+    if (recordingData && recordingData.file_path) {
+      await supabase.storage
+        .from('recordings')
+        .remove([recordingData.file_path]);
+    }
     
     // Send notification to user
     if (recordingData && recordingData.sentence_text) {
@@ -267,28 +250,78 @@ export const saveRecordingBlob = async (
   sentenceIndex: number,
   isRerecording: boolean = false
 ): Promise<string> => {
-  // Create date-based folder structure
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const { data: userData } = await supabase.from('users').select('gender').eq('unique_code', uniqueCode).single();
-  const gender = userData?.gender || 'unknown';
-  
-  const bucket = isRerecording ? 'rerecordings' : 'recordings';
-  const fileName = `${today}/${gender}_${language}_${uniqueCode}/${sentenceIndex}.wav`;
-  
-  const { data, error } = await supabase
-    .storage
-    .from(bucket)
-    .upload(fileName, blob, {
-      cacheControl: '3600',
-      upsert: true
-    });
+  try {
+    // Get user gender for file naming
+    const { data: userData } = await supabase
+      .from('users')
+      .select('gender')
+      .eq('unique_code', uniqueCode)
+      .single();
     
-  if (error) {
-    console.error(`Error uploading ${isRerecording ? 're-recording' : 'recording'}:`, error);
-    throw new Error(`Failed to upload ${isRerecording ? 're-recording' : 'recording'}`);
+    // Create date-based folder structure (YYYY-MM-DD)
+    const today = new Date().toISOString().split('T')[0];
+    const gender = userData?.gender || 'unknown';
+    
+    // Define the file path according to the new structure
+    // recordings/YYYY-MM-DD/gender_language_uniqueCode/
+    const bucket = isRerecording ? 'rerecordings' : 'recordings';
+    const folderPath = `${today}/${gender}_${language}_${uniqueCode}`;
+    const fileName = `${folderPath}/${sentenceIndex}.wav`;
+    
+    console.log(`Saving ${isRerecording ? 're-recording' : 'recording'} to: ${fileName}`);
+    
+    // Upload to Supabase Storage
+    const { data, error } = await supabase
+      .storage
+      .from(bucket)
+      .upload(fileName, blob, {
+        cacheControl: '3600',
+        upsert: true
+      });
+      
+    if (error) {
+      // Check if it's a bucket not found error
+      if (error.message?.includes('bucket not found')) {
+        console.error(`Error: Bucket '${bucket}' not found. Creating bucket...`);
+        
+        // Try to create the bucket
+        const { error: createError } = await supabase
+          .storage
+          .createBucket(bucket, {
+            public: false
+          });
+          
+        if (createError) {
+          console.error(`Error creating ${bucket} bucket:`, createError);
+          throw new Error(`Failed to create ${bucket} bucket`);
+        }
+        
+        // Retry upload after creating bucket
+        const { data: retryData, error: retryError } = await supabase
+          .storage
+          .from(bucket)
+          .upload(fileName, blob, {
+            cacheControl: '3600',
+            upsert: true
+          });
+          
+        if (retryError) {
+          console.error(`Error uploading ${isRerecording ? 're-recording' : 'recording'} after bucket creation:`, retryError);
+          throw new Error(`Failed to upload ${isRerecording ? 're-recording' : 'recording'}`);
+        }
+        
+        return retryData.path;
+      } else {
+        console.error(`Error uploading ${isRerecording ? 're-recording' : 'recording'}:`, error);
+        throw new Error(`Failed to upload ${isRerecording ? 're-recording' : 'recording'}`);
+      }
+    }
+    
+    return data.path;
+  } catch (error) {
+    console.error(`Error in saveRecordingBlob:`, error);
+    throw error;
   }
-  
-  return data.path;
 };
 
 export const getRecordingBlob = async (filePath: string, isRerecording: boolean = false): Promise<Blob | null> => {
@@ -356,35 +389,8 @@ export const setAdminPassword = async (password: string): Promise<boolean> => {
   }
 };
 
-export const exportAllData = async (): Promise<any> => {
-  // Get all users, recordings, etc.
-  const { data: users } = await supabase
-    .from('users')
-    .select('*');
-    
-  const { data: recordings } = await supabase
-    .from('recordings')
-    .select('*');
-    
-  const { data: languages } = await supabase
-    .from('languages')
-    .select('*');
-    
-  const { data: feedback } = await supabase
-    .from('feedback')
-    .select('*');
-    
-  return {
-    users,
-    recordings,
-    languages,
-    feedback,
-    exportDate: new Date().toISOString()
-  };
-};
-
 // Get all users for display in admin panel
-export const getAllUsers = async (): Promise<ExtendedUser[]> => {
+export const getAllUsers = async (): Promise<any[]> => {
   const { data: users, error } = await supabase
     .from('users')
     .select('*')
@@ -396,7 +402,7 @@ export const getAllUsers = async (): Promise<ExtendedUser[]> => {
   }
   
   // For each user, get their language
-  for (const user of users as ExtendedUser[]) {
+  for (const user of users) {
     const { data: langData } = await supabase
       .from('user_languages')
       .select('language')
@@ -404,11 +410,11 @@ export const getAllUsers = async (): Promise<ExtendedUser[]> => {
       .single();
       
     if (langData) {
-      (user as any).languagePreference = langData.language;
+      user.languagePreference = langData.language;
     }
   }
   
-  return users as ExtendedUser[];
+  return users;
 };
 
 // Delete user recordings
@@ -480,5 +486,147 @@ export const deleteUserRecordings = async (uniqueCode: string): Promise<boolean>
   } catch (error) {
     console.error("Error deleting user recordings:", error);
     return false;
+  }
+};
+
+// Delete user completely (both data and recordings)
+export const deleteUser = async (uniqueCode: string): Promise<boolean> => {
+  try {
+    // First delete all recordings
+    await deleteUserRecordings(uniqueCode);
+    
+    // Delete user language preferences
+    await supabase
+      .from('user_languages')
+      .delete()
+      .eq('unique_code', uniqueCode);
+      
+    // Delete user notifications
+    await supabase
+      .from('notifications')
+      .delete()
+      .eq('unique_code', uniqueCode);
+      
+    // Delete user feedback
+    await supabase
+      .from('feedback')
+      .delete()
+      .eq('unique_code', uniqueCode);
+    
+    // Delete the user from users table
+    await supabase
+      .from('users')
+      .delete()
+      .eq('unique_code', uniqueCode);
+      
+    // Find the auth user associated with this unique code
+    const { data: authData } = await supabase.auth.admin.listUsers({
+      filter: {
+        user_metadata: { unique_code: uniqueCode }
+      }
+    });
+      
+    if (authData?.users && authData.users.length > 0) {
+      // Delete the auth user
+      await supabase.auth.admin.deleteUser(
+        authData.users[0].id
+      );
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    return false;
+  }
+};
+
+// Function to download all user recordings as a zip file
+export const downloadUserRecordings = async (uniqueCode: string): Promise<Blob | null> => {
+  try {
+    // Get JSZip from the window object if it's been imported
+    const JSZip = (window as any).JSZip;
+    if (!JSZip) {
+      console.error("JSZip library not found");
+      return null;
+    }
+    
+    // Create a new zip file
+    const zip = new JSZip();
+    
+    // Get user recordings
+    const { data: recordings } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('unique_code', uniqueCode);
+      
+    if (!recordings || recordings.length === 0) {
+      return null;
+    }
+    
+    // Get user details
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('unique_code', uniqueCode)
+      .single();
+      
+    if (!user) {
+      return null;
+    }
+    
+    // Group recordings by language
+    const recordingsByLanguage: Record<string, any[]> = {};
+    recordings.forEach(rec => {
+      if (!recordingsByLanguage[rec.language]) {
+        recordingsByLanguage[rec.language] = [];
+      }
+      recordingsByLanguage[rec.language].push(rec);
+    });
+    
+    // For each language, create a folder
+    for (const [language, recs] of Object.entries(recordingsByLanguage)) {
+      const languageFolder = zip.folder(language);
+      if (!languageFolder) continue;
+      
+      // Create metadata.json
+      const metadata = {
+        user: {
+          name: user.name,
+          gender: user.gender,
+          age: user.age,
+          contact: user.contact_number,
+          unique_code: user.unique_code
+        },
+        recordings: recs.map(rec => ({
+          sentence_index: rec.sentence_index,
+          sentence_text: rec.sentence_text,
+          recording_date: rec.recording_date,
+          file_name: `${rec.sentence_index}.wav`,
+          needs_rerecording: rec.needs_rerecording,
+          snr: rec.snr
+        }))
+      };
+      
+      languageFolder.file("metadata.json", JSON.stringify(metadata, null, 2));
+      
+      // Download and add each recording
+      for (const rec of recs) {
+        try {
+          const blob = await getRecordingBlob(rec.file_path, rec.needs_rerecording);
+          if (blob) {
+            languageFolder.file(`${rec.sentence_index}.wav`, blob);
+          }
+        } catch (e) {
+          console.error(`Error adding recording ${rec.sentence_index} to zip:`, e);
+        }
+      }
+    }
+    
+    // Generate the zip file
+    return await zip.generateAsync({ type: "blob" });
+    
+  } catch (error) {
+    console.error("Error downloading user recordings:", error);
+    return null;
   }
 };
