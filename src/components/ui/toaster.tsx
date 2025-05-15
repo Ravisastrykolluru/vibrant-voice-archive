@@ -11,13 +11,12 @@ import {
 } from "@/components/ui/toast";
 
 export function Toaster() {
-  const { toasts, dismiss } = useToast();
+  const { toasts, dismiss, dispatch } = useToast();
 
   // Set the global dispatch for standalone toast function
   React.useEffect(() => {
-    const { dispatch } = useToast();
     setGlobalDispatch(dispatch);
-  }, []);
+  }, [dispatch]);
 
   return (
     <ToastProvider>

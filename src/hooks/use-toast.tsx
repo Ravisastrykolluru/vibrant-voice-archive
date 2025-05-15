@@ -108,37 +108,7 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
-// Create a context for toast state management
-const ToastContext = React.createContext<{
-  toasts: ToasterToast[];
-  dispatch: React.Dispatch<Action>;
-}>({
-  toasts: [],
-  dispatch: () => null
-});
-
-// Create the provider for the toast context
-export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, dispatch] = React.useReducer(reducer, { toasts: [] });
-
-  React.useEffect(() => {
-    return () => {
-      toastTimeouts.forEach((timeout) => {
-        clearTimeout(timeout);
-      });
-    };
-  }, []);
-
-  return (
-    <ToastContext.Provider value={{ toasts: state.toasts, dispatch }}>
-      {children}
-    </ToastContext.Provider>
-  );
-};
-
-// Global state and dispatch outside of component lifecycle
-// This is for the standalone toast function
-let globalState: State = { toasts: [] };
+// Global dispatch for standalone toast function
 let globalDispatch: React.Dispatch<Action> | null = null;
 
 const addToRemoveQueue = (toastId: string) => {
@@ -159,9 +129,39 @@ const addToRemoveQueue = (toastId: string) => {
   toastTimeouts.set(toastId, timeout);
 };
 
-// Get global dispatch function
+// Create a context for toast state management
+const ToastContext = React.createContext<{
+  toasts: ToasterToast[];
+  dispatch: React.Dispatch<Action>;
+}>({
+  toasts: [],
+  dispatch: () => null,
+});
+
+// Make the setGlobalDispatch function available for the Toaster component
 export const setGlobalDispatch = (dispatch: React.Dispatch<Action>) => {
   globalDispatch = dispatch;
+};
+
+// Create the provider for the toast context
+export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ 
+  children 
+}) => {
+  const [state, dispatch] = React.useReducer(reducer, { toasts: [] });
+
+  React.useEffect(() => {
+    return () => {
+      toastTimeouts.forEach((timeout) => {
+        clearTimeout(timeout);
+      });
+    };
+  }, []);
+
+  return (
+    <ToastContext.Provider value={{ toasts: state.toasts, dispatch }}>
+      {children}
+    </ToastContext.Provider>
+  );
 };
 
 export const useToast = () => {
@@ -170,16 +170,6 @@ export const useToast = () => {
   if (context === undefined) {
     throw new Error("useToast must be used within a ToastProvider");
   }
-
-  // Set global dispatch when context is available
-  React.useEffect(() => {
-    globalDispatch = context.dispatch;
-    return () => {
-      if (globalDispatch === context.dispatch) {
-        globalDispatch = null;
-      }
-    };
-  }, [context.dispatch]);
 
   const toast = React.useCallback(
     ({ ...props }: Omit<ToasterToast, "id">) => {
@@ -214,6 +204,7 @@ export const useToast = () => {
     toast,
     toasts: context.toasts,
     dismiss: (toastId?: string) => context.dispatch({ type: "DISMISS_TOAST", toastId }),
+    dispatch: context.dispatch,
   };
 };
 
