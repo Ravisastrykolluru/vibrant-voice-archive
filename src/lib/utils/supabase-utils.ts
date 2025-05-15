@@ -361,9 +361,9 @@ export const addLanguageWithSentences = async (
   }
 };
 
-// Fixed return type to avoid infinite type instantiation without using index signature
-export const getUserWithRecordingsCount = async (userId: string): Promise<{ 
-  recordingsCount: number; 
+// Function with explicit type structure to avoid infinite type instantiation
+export const getUserWithRecordingsCount = async (userId: string): Promise<{
+  recordingsCount: number;
   name?: string;
   unique_code?: string;
   created_at?: string;
