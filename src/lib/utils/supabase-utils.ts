@@ -361,17 +361,17 @@ export const addLanguageWithSentences = async (
   }
 };
 
-// Function with explicit type structure to avoid infinite type instantiation
+// Function with completely explicit return type to avoid infinite type instantiation
 export const getUserWithRecordingsCount = async (userId: string): Promise<{
   recordingsCount: number;
-  name?: string;
-  unique_code?: string;
-  created_at?: string;
-  password?: string | null;
-  age?: number;
-  gender?: string;
-  contact_number?: string;
-  id?: string;
+  name: string | undefined;
+  unique_code: string | undefined;
+  created_at: string | undefined;
+  password: string | null | undefined;
+  age: number | undefined;
+  gender: string | undefined;
+  contact_number: string | undefined;
+  id: string | undefined;
 }> => {
   try {
     // Get user details
@@ -383,7 +383,17 @@ export const getUserWithRecordingsCount = async (userId: string): Promise<{
       
     if (userError) {
       console.error("Error fetching user:", userError);
-      return { recordingsCount: 0 };
+      return { 
+        recordingsCount: 0,
+        name: undefined,
+        unique_code: undefined,
+        created_at: undefined,
+        password: undefined,
+        age: undefined,
+        gender: undefined,
+        contact_number: undefined,
+        id: undefined
+      };
     }
     
     // Count recordings
@@ -397,12 +407,29 @@ export const getUserWithRecordingsCount = async (userId: string): Promise<{
     }
     
     return {
-      ...(user || {}),
-      recordingsCount: recordingsCount || 0
+      recordingsCount: recordingsCount || 0,
+      name: user?.name,
+      unique_code: user?.unique_code,
+      created_at: user?.created_at,
+      password: user?.password,
+      age: user?.age,
+      gender: user?.gender,
+      contact_number: user?.contact_number,
+      id: user?.id
     };
   } catch (error) {
     console.error("Error in getUserWithRecordingsCount:", error);
-    return { recordingsCount: 0 };
+    return { 
+      recordingsCount: 0,
+      name: undefined,
+      unique_code: undefined,
+      created_at: undefined,
+      password: undefined,
+      age: undefined,
+      gender: undefined,
+      contact_number: undefined,
+      id: undefined
+    };
   }
 };
 
