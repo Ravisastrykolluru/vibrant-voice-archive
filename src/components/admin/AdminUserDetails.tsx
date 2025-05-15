@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,10 +16,10 @@ interface AdminUserDetailsProps {
     contact_number: string;
   };
   onBack: () => void;
-  onDelete: () => void;
+  onUserUpdated: () => void;
 }
 
-const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack, onDelete }) => {
+const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack, onUserUpdated }) => {
   const [recordings, setRecordings] = useState<any[]>([]);
   const [language, setLanguage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -112,6 +111,7 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack, onDel
         if (success) {
           setRecordings([]);
           alert("All recordings have been deleted.");
+          onUserUpdated(); // Call the onUserUpdated prop
         } else {
           alert("Failed to delete recordings.");
         }
@@ -126,7 +126,8 @@ const AdminUserDetails: React.FC<AdminUserDetailsProps> = ({ user, onBack, onDel
 
   const handleDeleteUser = async () => {
     if (window.confirm("Are you sure you want to permanently delete this user and all their data? This action cannot be undone.")) {
-      onDelete();
+      onUserUpdated(); // Call the onUserUpdated prop before navigating away
+      onBack();
     }
   };
 

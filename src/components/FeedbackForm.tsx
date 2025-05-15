@@ -8,10 +8,12 @@ import { saveUserFeedback } from "@/lib/utils/supabase-utils";
 
 interface FeedbackFormProps {
   uniqueCode: string;
+  userId?: string; // Add this optional prop to support backward compatibility
   onSubmit?: () => void;
+  onComplete?: () => void; // Add this optional prop
 }
 
-const FeedbackForm: React.FC<FeedbackFormProps> = ({ uniqueCode, onSubmit }) => {
+const FeedbackForm: React.FC<FeedbackFormProps> = ({ uniqueCode, userId, onSubmit, onComplete }) => {
   const [rating, setRating] = useState<number>(0);
   const [comments, setComments] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -28,11 +30,14 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ uniqueCode, onSubmit }) => 
     setIsSubmitting(true);
     
     try {
-      const success = await saveUserFeedback(uniqueCode, rating, comments);
+      // Use uniqueCode if provided, otherwise fall back to userId (for backward compatibility)
+      const userIdentifier = uniqueCode || userId || "";
+      const success = await saveUserFeedback(userIdentifier, rating, comments);
       
       if (success) {
         setSubmitted(true);
         if (onSubmit) onSubmit();
+        if (onComplete) onComplete(); // Call onComplete if provided
       } else {
         alert("Failed to submit feedback. Please try again.");
       }

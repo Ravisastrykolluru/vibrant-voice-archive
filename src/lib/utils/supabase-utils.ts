@@ -361,8 +361,8 @@ export const addLanguageWithSentences = async (
   }
 };
 
-// Function to get user details with recordings count
-export const getUserWithRecordingsCount = async (userId: string): Promise<any> => {
+// Fix the infinite type instantiation issue by being more specific with the return type
+export const getUserWithRecordingsCount = async (userId: string): Promise<{ recordingsCount: number } & Record<string, any>> => {
   try {
     // Get user details
     const { data: user, error: userError } = await supabase
@@ -373,7 +373,7 @@ export const getUserWithRecordingsCount = async (userId: string): Promise<any> =
       
     if (userError) {
       console.error("Error fetching user:", userError);
-      return null;
+      return { recordingsCount: 0 };
     }
     
     // Count recordings
@@ -387,12 +387,12 @@ export const getUserWithRecordingsCount = async (userId: string): Promise<any> =
     }
     
     return {
-      ...user,
+      ...(user || {}),
       recordingsCount: recordingsCount || 0
     };
   } catch (error) {
     console.error("Error in getUserWithRecordingsCount:", error);
-    return null;
+    return { recordingsCount: 0 };
   }
 };
 
