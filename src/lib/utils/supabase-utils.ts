@@ -593,3 +593,24 @@ export const fetchUserLanguages = async (userId: string): Promise<string[]> => {
     return [];
   }
 };
+
+// Add function to fetch sentences for a specific language
+export const fetchSentencesForLanguage = async (language: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('sentences')
+      .select('*')
+      .eq('language', language)
+      .order('id', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching sentences:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Exception fetching sentences:', error);
+    return [];
+  }
+};

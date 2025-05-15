@@ -9,9 +9,17 @@ import {
   saveRecordingMetadata,
   saveRecordingBlob,
   fetchUserLanguages,
+  fetchSentencesForLanguage,
 } from "@/lib/utils/supabase-utils";
 import FeedbackForm from "@/components/FeedbackForm";
 import { useToast } from "@/hooks/use-toast";
+import { Card } from "@/components/ui/card";
+
+interface Sentence {
+  id: number;
+  text: string;
+  language: string;
+}
 
 const RecordingSession = () => {
   const { userId, languageName } = useParams<{ userId: string; languageName: string }>();
@@ -27,8 +35,12 @@ const RecordingSession = () => {
   const [languages, setLanguages] = useState<string[]>([]);
   const [isLoadingLanguages, setIsLoadingLanguages] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState(languageName || "");
+  const [sentences, setSentences] = useState<Sentence[]>([]);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+  const [isLoadingSentences, setIsLoadingSentences] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Fetch languages and validate current language
   useEffect(() => {
     if (!userId) {
       toast({
@@ -69,6 +81,35 @@ const RecordingSession = () => {
     getLanguages();
   }, [userId, languageName, navigate, toast]);
 
+  // Fetch sentences for the selected language
+  useEffect(() => {
+    if (!selectedLanguage) return;
+
+    const loadSentences = async () => {
+      setIsLoadingSentences(true);
+      try {
+        const sentencesData = await fetchSentencesForLanguage(selectedLanguage);
+        setSentences(sentencesData);
+        // Set the first sentence as the current recorded text
+        if (sentencesData.length > 0) {
+          setRecordedText(sentencesData[0].text);
+        }
+      } catch (error) {
+        console.error("Error fetching sentences:", error);
+        toast({
+          title: "Error fetching sentences",
+          description: "Could not retrieve sentences for recording. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingSentences(false);
+      }
+    };
+
+    loadSentences();
+  }, [selectedLanguage, toast]);
+
+  // Initialize media recorder
   useEffect(() => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       toast({
@@ -140,14 +181,15 @@ const RecordingSession = () => {
     });
 
     try {
-      // Fix the function call by providing all required parameters
-      // We'll use placeholders for missing parameters
+      const sentenceIndex = currentSentenceIndex;
+      const sentenceText = sentences[sentenceIndex]?.text || recordedText;
+      
       await saveRecordingMetadata(
         userId || "", 
-        languageName || "",
-        0,  // Set a default sentence index
-        "recording_" + Date.now() + ".webm", // Generate a file path
-        recordedText || "No text available"
+        selectedLanguage || "",
+        sentenceIndex,
+        `recording_${userId}_${selectedLanguage}_${sentenceIndex}_${Date.now()}.webm`,
+        sentenceText
       );
     } catch (error) {
       console.error("Error saving recording metadata:", error);
@@ -178,6 +220,7 @@ const RecordingSession = () => {
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLanguage = e.target.value;
     setSelectedLanguage(newLanguage);
+    setCurrentSentenceIndex(0);
     navigate(`/record/${userId}/${newLanguage}`);
   };
 
@@ -192,16 +235,29 @@ const RecordingSession = () => {
     }
 
     const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const filePath = `recordings/${userId}/${languageName}/${Date.now()}.webm`;
+    const sentenceIndex = currentSentenceIndex;
+    const filePath = `recordings/${userId}/${selectedLanguage}/${sentenceIndex}_${Date.now()}.webm`;
 
     try {
-      // Fix the function call by providing both required parameters
       await saveRecordingBlob(audioBlob, filePath);
       toast({
         title: "Recording saved",
         description: "Your recording has been successfully saved.",
       });
-      setShowFeedbackForm(true);
+      
+      // Move to the next sentence if available
+      if (currentSentenceIndex < sentences.length - 1) {
+        setCurrentSentenceIndex(prevIndex => {
+          const newIndex = prevIndex + 1;
+          setRecordedText(sentences[newIndex].text);
+          return newIndex;
+        });
+        setAudioChunks([]);
+        setRecordingStatus("idle");
+      } else {
+        // If this was the last sentence, show the feedback form
+        setShowFeedbackForm(true);
+      }
     } catch (error) {
       console.error("Error saving recording:", error);
       toast({
@@ -209,6 +265,30 @@ const RecordingSession = () => {
         description: "Failed to save recording. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handlePreviousSentence = () => {
+    if (currentSentenceIndex > 0) {
+      setCurrentSentenceIndex(prevIndex => {
+        const newIndex = prevIndex - 1;
+        setRecordedText(sentences[newIndex].text);
+        return newIndex;
+      });
+      setAudioChunks([]);
+      setRecordingStatus("idle");
+    }
+  };
+
+  const handleNextSentence = () => {
+    if (currentSentenceIndex < sentences.length - 1) {
+      setCurrentSentenceIndex(prevIndex => {
+        const newIndex = prevIndex + 1;
+        setRecordedText(sentences[newIndex].text);
+        return newIndex;
+      });
+      setAudioChunks([]);
+      setRecordingStatus("idle");
     }
   };
 
@@ -253,47 +333,85 @@ const RecordingSession = () => {
             </select>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-4 justify-center pt-4 animate-fade-in">
-            <Button
-              onClick={startRecording}
-              disabled={isRecording}
-              className="px-6 py-3"
-            >
-              {isRecording ? "Recording..." : "Start Recording"}
-            </Button>
+          {isLoadingSentences ? (
+            <div className="text-center py-8">
+              <p>Loading sentences...</p>
+            </div>
+          ) : sentences.length === 0 ? (
+            <div className="text-center py-8">
+              <Card className="p-6">
+                <p className="text-xl font-medium mb-4">No sentences found</p>
+                <p>There are no sentences available for recording in this language.</p>
+              </Card>
+            </div>
+          ) : (
+            <>
+              <div className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 mb-4">
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sentence {currentSentenceIndex + 1} of {sentences.length}:
+                </Label>
+                <p className="text-xl font-medium">{recordedText}</p>
+              </div>
 
-            <Button
-              onClick={stopRecording}
-              disabled={!isRecording && recordingStatus !== "recording"}
-              className="px-6 py-3"
-            >
-              Stop Recording
-            </Button>
+              <div className="flex flex-col md:flex-row gap-4 justify-center pt-4 animate-fade-in">
+                <Button
+                  onClick={startRecording}
+                  disabled={isRecording}
+                  className="px-6 py-3"
+                >
+                  {isRecording ? "Recording..." : "Start Recording"}
+                </Button>
 
-            <Button onClick={playRecording} className="px-6 py-3">
-              Play Recording
-            </Button>
+                <Button
+                  onClick={stopRecording}
+                  disabled={!isRecording && recordingStatus !== "recording"}
+                  className="px-6 py-3"
+                >
+                  Stop Recording
+                </Button>
 
-            <Button onClick={handleSave} className="px-6 py-3">
-              Save Recording
-            </Button>
-          </div>
+                <Button onClick={playRecording} className="px-6 py-3">
+                  Play Recording
+                </Button>
 
-          <audio ref={audioRef} controls className="w-full mt-4 animate-fade-in" />
+                <Button onClick={handleSave} className="px-6 py-3">
+                  Save Recording
+                </Button>
+              </div>
 
-          <div className="w-full animate-fade-in">
-            <Label htmlFor="recordedText" className="block text-left text-sm font-medium">
-              Recorded Text:
-            </Label>
-            <Textarea
-              id="recordedText"
-              placeholder="The recorded text will appear here."
-              value={recordedText}
-              onChange={(e) => setRecordedText(e.target.value)}
-              rows={4}
-              className="mt-2"
-            />
-          </div>
+              <audio ref={audioRef} controls className="w-full mt-4 animate-fade-in" />
+
+              <div className="flex justify-between mt-6">
+                <Button 
+                  onClick={handlePreviousSentence} 
+                  disabled={currentSentenceIndex === 0}
+                  variant="outline"
+                >
+                  Previous Sentence
+                </Button>
+                <Button 
+                  onClick={handleNextSentence}
+                  disabled={currentSentenceIndex === sentences.length - 1}
+                  variant="outline"
+                >
+                  Next Sentence
+                </Button>
+              </div>
+
+              <div className="w-full animate-fade-in mt-6">
+                <Label htmlFor="recordedText" className="block text-left text-sm font-medium">
+                  Edit Text (if needed):
+                </Label>
+                <Textarea
+                  id="recordedText"
+                  value={recordedText}
+                  onChange={(e) => setRecordedText(e.target.value)}
+                  rows={4}
+                  className="mt-2"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {showFeedbackForm && (
