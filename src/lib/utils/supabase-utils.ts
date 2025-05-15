@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export const getLanguages = async () => {
@@ -555,6 +554,42 @@ export const getUserRecordings = async (uniqueCode: string, language?: string) =
     return data || [];
   } catch (error) {
     console.error('Exception fetching user recordings:', error);
+    return [];
+  }
+};
+
+// Add the missing fetchUserLanguages function
+export const fetchUserLanguages = async (userId: string): Promise<string[]> => {
+  try {
+    // First, get the user's unique code using the userId
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('unique_code')
+      .eq('id', userId)
+      .single();
+    
+    if (userError || !userData) {
+      console.error('Error fetching user:', userError);
+      return [];
+    }
+    
+    const uniqueCode = userData.unique_code;
+    
+    // Then fetch the language for this unique code
+    const { data, error } = await supabase
+      .from('user_languages')
+      .select('language')
+      .eq('unique_code', uniqueCode);
+    
+    if (error) {
+      console.error('Error fetching user languages:', error);
+      return [];
+    }
+    
+    // Return the languages as an array of strings
+    return data?.map(item => item.language) || [];
+  } catch (error) {
+    console.error('Exception fetching user languages:', error);
     return [];
   }
 };

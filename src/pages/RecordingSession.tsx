@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Layout from "@/components/Layout";
@@ -139,7 +140,15 @@ const RecordingSession = () => {
     });
 
     try {
-      await saveRecordingMetadata(userId, languageName);
+      // Fix the function call by providing all required parameters
+      // We'll use placeholders for missing parameters
+      await saveRecordingMetadata(
+        userId || "", 
+        languageName || "",
+        0,  // Set a default sentence index
+        "recording_" + Date.now() + ".webm", // Generate a file path
+        recordedText || "No text available"
+      );
     } catch (error) {
       console.error("Error saving recording metadata:", error);
       toast({
@@ -183,9 +192,11 @@ const RecordingSession = () => {
     }
 
     const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+    const filePath = `recordings/${userId}/${languageName}/${Date.now()}.webm`;
 
     try {
-      await saveRecordingBlob(audioBlob);
+      // Fix the function call by providing both required parameters
+      await saveRecordingBlob(audioBlob, filePath);
       toast({
         title: "Recording saved",
         description: "Your recording has been successfully saved.",
